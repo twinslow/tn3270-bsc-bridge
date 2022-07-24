@@ -1,0 +1,19 @@
+{
+  "name": "tn3270-bsc-bridge",
+  "version": "1.0.0",
+  "description": "Connect to hercules/TN3270 and USB serial to 3174 via USB/BSC dongle",
+  "main": "bridge.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "mocha test/*"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "chai": "^4.3.6",
+    "config": "^3.3.7",
+    "mocha": "^10.0.0",
+    "sinon": "^14.0.0",
+    "winston": "^3.8.1"
+  }
+}
