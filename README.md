@@ -15,6 +15,6 @@ flowchart TD
     tn3270[Hercules TN3270 server]
     bridge[TN3270 BSC bridge]
     dongle["USB to synchronous serial (BSC) dongle"]
-    tn3270 --> bridge
-    bridge --> dongle
+    tn3270 <--> bridge
+    bridge <--> dongle
 ```
