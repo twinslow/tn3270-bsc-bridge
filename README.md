@@ -13,11 +13,13 @@ The idea here is to create use this software to write and read BSC frames to a U
 
 ```mermaid
 flowchart TD
+    mvs["Hercules emulator, running MVS3.8j (and TSO etc)."]
     tn3270[Hercules TN3270 server]
     bridge[TN3270 BSC bridge]
     dongle["USB to synchronous serial (BSC) dongle"]
     3174[IBM 3174-91R cluster controller]
     3179[IBM 3179 terminal]
+    mvs <-->|Channel attached emulated 3274 controller|tn3270
     tn3270 <--> |TN3270 TCP/IP connection|bridge
     bridge <--> |USB serial device|dongle
     dongle <--> |RS-232 synchronous serial|3174
@@ -28,7 +30,7 @@ The USB to serial dongle is based around an Arduino board and uses MAX232 ICs to
 for RS-232/V.24 comms. The serial interface is synchronous, meaning there are clock signals for the transmit and
 receive data.
 
-This project, the TN3270 BSC bridgeis responsible for
+This project, the TN3270 BSC bridge is (or will be) responsible for --
 
 * Framing the 3270 datastream, received from the TN3270 server
 * Sending BSC frames to the dongle
