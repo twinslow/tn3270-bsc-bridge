@@ -23,3 +23,16 @@ flowchart TD
     dongle <--> |RS-232 synchronous serial|3174
     3174 <--> |Coax attachment CUT|3179
 ```
+
+The USB to serial dongle is based around an Arduino board and uses MAX232 ICs to shift voltage levels as required
+for RS-232/V.24 comms. The serial interface is synchronous, meaning there are clock signals for the transmit and
+receive data.
+
+This project, the TN3270 BSC bridgeis responsible for
+
+* Framing the 3270 datastream, received from the TN3270 server
+* Sending BSC frames to the dongle
+* Interpreting ACKs/NAKs that come back from the dongle
+* Sending poll requests to the devices
+* Receiving BSC frames from the dongle and returning 3270 responses to the TN3270 server.
+
