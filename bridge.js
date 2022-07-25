@@ -2,6 +2,7 @@
 
 const config = require('config');
 const { logMgr } = require('./logger.js');
+const { crc16 } = require("crc");
 
 const { TelnetConnection, } = require("./telnet-client");
 const { hexDump } = require("./hex-dump");
@@ -59,13 +60,20 @@ class BisyncTerminal {
 }
 
 class BscFrame extends Uint8Array {
-    constructor(size = 300)  {
+    constructor(size = 300, initialData = null)  {
         super(size);
         this.frameSize = 0;
+        if ( initialData )
+            this.push(initialData);
+
     }
 
     push(data) {
-        if ( typeof data == 'array' ) {
+        if ( data instanceof Array
+             || data instanceof Buffer
+             || data instanceof Uint8Array
+             || data instanceof Int8Array
+              ) {
             for ( let x = 0; x<data.length; x++ )
                 this[this.frameSize++] = data[x];
             return;
@@ -74,6 +82,8 @@ class BscFrame extends Uint8Array {
         this[this.frameSize++] = data;
     }
 }
+
+module.exports.BscFrame = BscFrame;
 
 class BSC {
     // These the EBCDIC control codes. We are not attempting to support ASCII or SBT (six-bit) codes.
@@ -102,7 +112,102 @@ class BSC {
     static LEADING_PAD = 0x55;
     static TRAILING_PAD = 0xff;
 
-    static makeFrameTransmitStart() {
+    // EBCDIC control
+    ESC = 0x27;
+
+    static makeFrameStart() {
+        let frame = new BscFrame(6);
+        frame.push([
+            BSC.LEADING_PAD, BSC.LEADING_PAD,
+            BSC.SYN, BSC.SYN,
+            BSC.EOT,
+            BSC.TRAILING_PAD
+        ]);
+        return frame;
+    }
+
+    static findStartEndForBcc(frame) {
+        let transparentMode = false;
+        let startOfCalc;
+
+        let ptr = 0;
+        while( frame[ptr] != BSC.STX && frame[ptr] != BSC.SOH )
+            ptr++;
+
+        if ( frame[ptr] == BSC.SOH ) {
+            startOfCalc = ++ptr;
+            while( frame[ptr] != BSC.STX )
+                ptr++;
+            if ( frame[ptr-1] == BSC.DLE )
+                transparentMode = true;
+        } else {
+            if ( frame[ptr-1] == BSC.DLE )
+                transparentMode = true;
+            startOfCalc = ++ptr;  // Start CRC16 calculation at the byte after the STX
+        }
+
+        // Find the end, which will be ETX, or DLE-ETX
+        if ( transparentMode ) {
+            while( frame[ptr-1] != BSC.DLE
+                && frame[ptr] != BSC.ETX
+                && frame[ptr] != BSC.ITB
+                && frame[ptr] != BSC.ETB
+                && ptr < frame.length )
+                ptr++;
+        } else {
+            while( frame[ptr] != BSC.ETX
+                && frame[ptr] != BSC.ITB
+                && frame[ptr] != BSC.ETB
+                && ptr < frame.length )
+                ptr++;
+        }
+
+        let endOfCalc = ptr + 1;
+
+        return { startOfCalc: startOfCalc, endOfCalc: endOfCalc, transparentMode: transparentMode };
+    }
+
+    static addBccToFrame(frame) {
+
+        let { startOfCalc, endOfCalc, transparentMode } = BSC.findStartEndForBcc(frame);
+
+        let bccValue = crc16(frame.slice(startOfCalc, endOfCalc) );
+
+        frame.push( 0x000000FF & bccValue );
+        bccValue = bccValue>>8;
+        frame.push( 0x000000FF & bccValue );
+
+        return frame;
+    }
+
+
+    static makeFrameSelectAddress(cuAddress, devAddress) {
+        let frame = new BscFrame(7);
+        frame.push([
+            BSC.SYN, BSC.SYN,
+            cuAddress, cuAddress,
+            devAddress, devAddress,
+            BSC.ENQ
+        ]);
+        return frame;
+    }
+
+    static makeFrameCommand(data) {
+        let frame = new BscFrame();
+        frame.push([
+            BSC.SYN, BSC.SYN,
+            BSC.STX,
+            BSC.ESC,
+        ]);
+        frame.push(data);
+        frame.push(BSC.ETX);
+
+        this.addBccToFrame(frame);
+
+        return frame;
+    }
+
+    static makeFrameEnd() {
         let frame = new BscFrame(5);
         frame.push([
             BSC.LEADING_PAD,
@@ -112,7 +217,22 @@ class BSC {
         ]);
         return frame;
     }
+
+    static makeFrameDataBlock(isEven, text, isLast) {
+        let frame = new BscFrame();
+        frame.push([
+            BSC.SYN, BSC.SYN,
+            BSC.STX
+        ]);
+        frame.push(text);
+        frame.push([
+
+        ])
+        return frame;
+    }
 }
+
+module.exports.BSC = BSC;
 
 class BisyncLine {
 
@@ -121,6 +241,7 @@ class BisyncLine {
 
     constructor() {
         this.devices = [];
+        this.frameCount = 0;
     }
 
     addDevice(pollAddress, terminalType) {
@@ -184,7 +305,13 @@ class BisyncLine {
         this.runFlag = false;
     }
 
+    async sendFrame(frame) {
+        this.frameCount++;
+    }
+
     async sendFrameAndGetResponse(frame) {
+        await this.sendFrame(frame);
+        // get response ...
 
     }
 
@@ -193,8 +320,13 @@ class BisyncLine {
      *  for ACKs.
      */
     async sendData( deviceSubAddress, dataBuffer ) {
-        let frame = BSC.makeFrameTransmitStart();
+
+        // Initiate transmit
+        await this.sendFrame(BSC.makeFrameTransmitStart());
+        // Select
+        let frame = BSC.makeFrameSelectAddress(this.controllerAddress, deviceSubAddress);
         let response = await this.sendFrameAndGetResponse(frame);
+
     }
 }
 
@@ -210,7 +342,6 @@ class Bridge {
     }
 
     async startBridge() {
-
         this.bisyncLine = new BisyncLine();
 
         await this.bisyncLine.run();
