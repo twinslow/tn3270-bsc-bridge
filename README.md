@@ -15,7 +15,7 @@ The idea here is for this software to write and read BSC frames to a USB attache
 flowchart TD
     mvs["Hercules emulator, running MVS3.8j (and TSO etc)."]
     tn3270[Hercules TN3270 server]
-    bridge[TN3270 BSC bridge]
+    bridge["TN3270 BSC bridge (that's this project)"]
     dongle["USB to synchronous serial (BSC) dongle, acting as DCE"]
     3174[IBM 3174-91R cluster controller]
     3179[IBM 3179 terminal]
