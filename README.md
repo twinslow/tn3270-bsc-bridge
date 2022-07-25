@@ -39,6 +39,13 @@ This project, the TN3270 BSC bridge is (or will be) responsible for --
 * Sending poll requests to the devices
 * Receiving BSC frames from the dongle and returning 3270 responses to the TN3270 server.
 
+## Why is this in Javascript?
+
+In my professional paid work, I have been developing mostly back-end code in Javascript. As this is what I'm
+currently working with, and I haven't done any C# or Java for a little while, Javascript was comfortable for me.
+C and C++ are even longer ago if I don't count the small amount I've been doing for the Arduino USB to BSC dongle.
+I may well decide to convert this code to another language at some time in the future.
+
 ## What's working (as of 7/23/2022)
 
 At this time, not too much.
@@ -46,10 +53,14 @@ At this time, not too much.
 * The TelnetConnection class (and the TelnetOptionSet and TelnetOption classes) are mostly operational.
   These classes allow a connection to be made to the telnet (TN3270) server and receive the initial 3270 datastream that is sent down from MVS/TSO.
 
+## CRC calculations
+
+I have found that the npm `CRC` module with function `crc16` appears to give the expected BCC values for BSC.
+
 ## Other ideas
 
 I have a second IBM 3174, a model 51R. Perhaps I will try and attach this using SNA.
 
-Another device that I have is an INFORMER terminal, a SDLC/SNA variant. So it's pretty much the same as the above 3174 for getting this working. I think it is possible to use the V.24 port directly. If not, I do have a
+Another device that I have, is a INFORMER terminal, a SDLC/SNA variant. So it's pretty much the same as the above 3174 for getting this working. I think it is possible to use the V.24 port directly. If not, I do have a
 couple of SDLC capable synchronous modems.
 
