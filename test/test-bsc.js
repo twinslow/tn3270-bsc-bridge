@@ -114,17 +114,6 @@ describe("Testing class BSC", function() {
             BSC.TRAILING_PAD
         ]));
     });
-    it("Test makeFrameSelectAddress() function", function() {
-
-        let frame = BSC.makeFrameSelectAddress( 0xC1, 0x41 );
-
-        expect(frame).to.be.deep.equal(new BscFrame( 7, [
-            BSC.SYN, BSC.SYN,
-            0xC1, 0xC1,
-            0x41, 0x41,
-            BSC.ENQ,
-        ]));
-    });
     it("Test findStartEndForBcc() function, STX...ETX", function() {
 
         let frame = new BscFrame(300,
@@ -205,4 +194,148 @@ describe("Testing class BSC", function() {
 
         expect(frame).to.be.deep.equal(expectedFrame);
     });
+    it("Test makeFrameSelectAddress() function", function() {
+
+        let frame = BSC.makeFrameSelectAddress( 0xC1, 0x41 );
+
+        expect(frame).to.be.deep.equal(new BscFrame( 7, [
+            BSC.SYN, BSC.SYN,
+            0xC1, 0xC1,
+            0x41, 0x41,
+            BSC.ENQ,
+        ]));
+    });
+    it("Test hasBscControlChars() function", function() {
+
+        expect(BSC.hasBscControlChar([0xD9, BSC.STX, 0x40, 0xC8, 0x40, 0x50])).to.be.true;
+        expect(BSC.hasBscControlChar([0xD9, 0x20, 0x40, 0xC8, 0x40, 0x50])).to.be.false;
+        expect(BSC.hasBscControlChar([0x10])).to.be.true;
+        expect(BSC.hasBscControlChar([])).to.be.false;
+        expect(BSC.hasBscControlChar(null)).to.be.false;
+
+    });
+    it("Test createFrameWithPrefix() function - transparentMode = false", function() {
+
+        let frame = BSC.createFrameWithPrefix(false);
+
+        expect(frame).to.be.deep.equal(new BscFrame(300,
+            [BSC.SYN, BSC.SYN, BSC.STX, BSC.ESC]));
+
+    });
+    it("Test createFrameWithPrefix() function - transparentMode = true", function() {
+
+        let frame = BSC.createFrameWithPrefix(true);
+
+        expect(frame).to.be.deep.equal(new BscFrame(300,
+            [BSC.SYN, BSC.SYN, BSC.DLE, BSC.STX, BSC.ESC]));
+
+    });
+    it("Test addEndOfText() function", function() {
+
+        let frame = BSC.addEndOfText(new BscFrame(), false, false);
+        expect(frame).to.be.deep.equal(new BscFrame(300, [BSC.ETB]));
+
+        frame = BSC.addEndOfText(new BscFrame(), false, true);
+        expect(frame).to.be.deep.equal(new BscFrame(300, [BSC.DLE, BSC.ETB]));
+
+        frame = BSC.addEndOfText(new BscFrame(), true, false);
+        expect(frame).to.be.deep.equal(new BscFrame(300, [BSC.ETX]));
+
+        frame = BSC.addEndOfText(new BscFrame(), true, true);
+        expect(frame).to.be.deep.equal(new BscFrame(300, [BSC.DLE, BSC.ETX]));
+    });
+    it("Test makeFrameCommand() isLastBlock = false, useTransparentMode = false", function() {
+
+        let data = [0x41, 0x42, 0x43];
+
+        let stub_addBccToFrame = sandbox.stub(BSC, "addBccToFrame")
+            .callsFake( (frame) =>
+            {
+                // Add these dummy BCC chars
+                frame.push( 0xF1 );
+                frame.push( 0xF2 );
+            });
+        let stub_createFrameWithPrefix = sandbox.stub(BSC, 'createFrameWithPrefix')
+            .callsFake( () => { return new BscFrame(); });
+        let stub_addEndOfText = sandbox.stub(BSC, 'addEndOfText')
+            .callsFake( () => {} );
+
+        let frame1 = BSC.makeFrameCommand(data, false, false);
+        expect(stub_createFrameWithPrefix.callCount).to.be.equal(1);
+        expect(stub_createFrameWithPrefix.getCall(0).args).to.be.deep.equal([false]);
+
+        expect(stub_addEndOfText.callCount).to.be.equal(1);
+        expect(stub_addEndOfText.getCall(0).args.length).to.be.equal(3)
+        expect(stub_addEndOfText.getCall(0).args[1]).to.be.false;
+        expect(stub_addEndOfText.getCall(0).args[2]).to.be.false;
+
+        expect(frame1).to.be.deep.equal(new BscFrame(300, [0x41, 0x42, 0x43, 0xF1, 0xF2]));
+    });
+    it("Test makeFrameCommand() isLastBlock = true, useTransparentMode = false", function() {
+
+        let data = [0x41, 0x42, 0x43];
+
+        let stub_addBccToFrame = sandbox.stub(BSC, "addBccToFrame")
+            .callsFake( (frame) =>
+            {
+                // Add these dummy BCC chars
+                frame.push( 0xF1 );
+                frame.push( 0xF2 );
+            });
+        let stub_createFrameWithPrefix = sandbox.stub(BSC, 'createFrameWithPrefix')
+            .callsFake( () => { return new BscFrame(); });
+        let stub_addEndOfText = sandbox.stub(BSC, 'addEndOfText')
+            .callsFake( () => {} );
+
+        let frame1 = BSC.makeFrameCommand(data, true, false);
+        expect(stub_createFrameWithPrefix.callCount).to.be.equal(1);
+        expect(stub_createFrameWithPrefix.getCall(0).args).to.be.deep.equal([false]);
+
+        expect(stub_addEndOfText.callCount).to.be.equal(1);
+        expect(stub_addEndOfText.getCall(0).args.length).to.be.equal(3)
+        expect(stub_addEndOfText.getCall(0).args[1]).to.be.true;
+        expect(stub_addEndOfText.getCall(0).args[2]).to.be.false;
+
+        expect(frame1).to.be.deep.equal(new BscFrame(300, [0x41, 0x42, 0x43, 0xF1, 0xF2]));
+    });
+    it("Test makeFrameCommand() isLastBlock = true, useTransparentMode = true", function() {
+
+        let data = [0x41, 0x42, 0x43];
+
+        let stub_addBccToFrame = sandbox.stub(BSC, "addBccToFrame")
+            .callsFake( (frame) =>
+            {
+                // Add these dummy BCC chars
+                frame.push( 0xF1 );
+                frame.push( 0xF2 );
+            });
+        let stub_createFrameWithPrefix = sandbox.stub(BSC, 'createFrameWithPrefix')
+            .callsFake( () => { return new BscFrame(); });
+        let stub_addEndOfText = sandbox.stub(BSC, 'addEndOfText')
+            .callsFake( () => {} );
+
+        let frame1 = BSC.makeFrameCommand(data, true, true);
+        expect(stub_createFrameWithPrefix.callCount).to.be.equal(1);
+        expect(stub_createFrameWithPrefix.getCall(0).args).to.be.deep.equal([true]);
+
+        expect(stub_addEndOfText.callCount).to.be.equal(1);
+        expect(stub_addEndOfText.getCall(0).args.length).to.be.equal(3)
+        expect(stub_addEndOfText.getCall(0).args[1]).to.be.true;
+        expect(stub_addEndOfText.getCall(0).args[2]).to.be.true;
+
+        expect(frame1).to.be.deep.equal(new BscFrame(300, [0x41, 0x42, 0x43, 0xF1, 0xF2]));
+    });
+    it("Test makeFrameStart() function", function() {
+
+        let frame = BSC.makeFrameEnd();
+
+        expect(frame).to.be.deep.equal(new BscFrame( 6, [
+            BSC.LEADING_PAD, BSC.LEADING_PAD,
+            BSC.SYN, BSC.SYN,
+            BSC.EOT,
+            BSC.TRAILING_PAD
+        ]));
+    });
+
+
 });

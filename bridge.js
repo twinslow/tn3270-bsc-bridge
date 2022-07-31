@@ -96,9 +96,8 @@ class BSC {
     static ENQ   = 0x2D;
     static ETX   = 0x03;
     static DLE   = 0x10;
-    static PAD   = 0xFF;
     static NAK   = 0x3D;
-    static ITB   = 0x1F;
+    static ITB   = 0x1F; // IUS char
 
     // These are preceeded by a DLE
     static ACK0  = 0x70;
@@ -114,6 +113,27 @@ class BSC {
 
     // EBCDIC control
     ESC = 0x27;
+
+    // A 256 entry array. If entry is "1" it is a BSC control character.
+    static BSC_CONTROL_CHECK = new Uint8Array([
+/*              0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F          */
+/*      0 */    0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+/*      1 */    1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+/*      2 */    0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0,
+/*      3 */    0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0,
+/*      4 */    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+/*      5 */    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+/*      6 */    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+/*      7 */    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+/*      8 */    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+/*      9 */    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+/*      A */    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+/*      B */    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+/*      C */    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+/*      D */    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+/*      E */    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+/*      F */    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    ]);
 
     static makeFrameStart() {
         let frame = new BscFrame(6);
@@ -146,7 +166,7 @@ class BSC {
             startOfCalc = ++ptr;  // Start CRC16 calculation at the byte after the STX
         }
 
-        // Find the end, which will be ETX, or DLE-ETX
+        // Find the end, which will be ETX|ITB|ETB, or DLE-ETX|ITB|ETB
         if ( transparentMode ) {
             while( frame[ptr-1] != BSC.DLE
                 && frame[ptr] != BSC.ETX
@@ -192,16 +212,79 @@ class BSC {
         return frame;
     }
 
-    static makeFrameCommand(data) {
-        let frame = new BscFrame();
-        frame.push([
-            BSC.SYN, BSC.SYN,
-            BSC.STX,
-            BSC.ESC,
-        ]);
-        frame.push(data);
-        frame.push(BSC.ETX);
+    static hasBscControlChar(data) {
+        if ( !data )
+            return false;
 
+        for( let x=0; x<data.length; x++ ) {
+            if ( BSC.BSC_CONTROL_CHECK[data[x]] )
+                return true;
+        }
+        return false;
+    }
+
+    static createFrameWithPrefix(useTransparentMode = false) {
+        let frame = new BscFrame();
+
+        // Use appropriate prefix
+        if ( !useTransparentMode ) {
+            frame.push([
+                BSC.SYN, BSC.SYN,
+                BSC.STX,
+                BSC.ESC,
+            ]);
+        } else {
+            frame.push([
+                BSC.SYN, BSC.SYN,
+                BSC.DLE, BSC.STX,
+                BSC.ESC,
+            ]);
+        }
+
+        return frame;
+    };
+
+    /**
+     * Add end of text chars to frame based on use of transparent text mode and if it last block.
+     *
+     * @param {*} frame
+     * @param {*} isLastBlock - Determines if ends with ETB or ETX
+     * @param {*} useTransparentMode - If true use BSC transparent text mode
+     * @returns frame
+     */
+    static addEndOfText(frame, isLastBlock = true, useTransparentMode = false) {
+
+        // End block/transmission
+        if ( useTransparentMode )
+            frame.push(BSC.DLE);
+        if ( isLastBlock )
+            frame.push(BSC.ETX);
+        else
+            frame.push(BSC.ETB);
+
+        return frame;
+    }
+
+    /**
+     * Create a BSC frame that contains for a 3270 command stream (datastream).
+     * When using transparent mode, any DLE chars should already be escaped
+     *
+     * @param {*} data - An array of byte values to be sent as the text block
+     * @param {*} isLastBlock - Determines if ends with ETB or ETX
+     * @param {*} useTransparentMode - If true use BSC transparent text mode
+     * @returns The constructed BSC frame
+     */
+    static makeFrameCommand(data, isLastBlock = true, useTransparentMode = false) {
+
+        let frame = BSC.createFrameWithPrefix(useTransparentMode);
+
+        // Add the data
+        frame.push(data);
+
+        // Add the end of block / end of text to frame.
+        BSC.addEndOfText(frame, isLastBlock, useTransparentMode);
+
+        // Calculate and add the BCC chars to the frame
         this.addBccToFrame(frame);
 
         return frame;
@@ -212,24 +295,12 @@ class BSC {
         frame.push([
             BSC.LEADING_PAD,
             BSC.SYN, BSC.SYN,
-            BSC.ENQ,
+            BSC.EOT,
             BSC.TRAILING_PAD
         ]);
         return frame;
     }
 
-    static makeFrameDataBlock(isEven, text, isLast) {
-        let frame = new BscFrame();
-        frame.push([
-            BSC.SYN, BSC.SYN,
-            BSC.STX
-        ]);
-        frame.push(text);
-        frame.push([
-
-        ])
-        return frame;
-    }
 }
 
 module.exports.BSC = BSC;
@@ -237,7 +308,7 @@ module.exports.BSC = BSC;
 class BisyncLine {
 
     static telnetTerminalType = config.get("telnet.terminal-type");
-
+    static FRAME_XMIT_RETRY_LIMIT = 3;
 
     constructor() {
         this.devices = [];
@@ -310,9 +381,15 @@ class BisyncLine {
     }
 
     async sendFrameAndGetResponse(frame) {
-        await this.sendFrame(frame);
-        // get response ...
+        let ack = false;
+        let retries = 0;
+        while ( !ack && retries <= BisyncLine.FRAME_XMIT_RETRY_LIMIT ) {
+            await this.sendFrame(frame);
+            // get response ...
 
+            // Check for ACK/NAK
+        }
+        return response;
     }
 
     /**
@@ -320,6 +397,9 @@ class BisyncLine {
      *  for ACKs.
      */
     async sendData( deviceSubAddress, dataBuffer ) {
+        let useDataBuffer = dataBuffer;
+        if ( dataBuffer instanceof Buffer )
+            useDataBUffer = Uint8Array(dataBuffer);
 
         // Initiate transmit
         await this.sendFrame(BSC.makeFrameTransmitStart());
@@ -327,6 +407,34 @@ class BisyncLine {
         let frame = BSC.makeFrameSelectAddress(this.controllerAddress, deviceSubAddress);
         let response = await this.sendFrameAndGetResponse(frame);
 
+
+        // Chop the dataBuffer into blocks, based on a length of 251 data characters
+        let dataBlockLength = 251;
+
+        let dataPtr = 0;
+        let chunk = [];
+        while ( dataPtr < useDataBuffer.length ) {
+            if ( useDataBuffer[dataPtr] === BSC.DLE ) {
+                // DLE chars must be doubled.
+                chunk.push(BSC.DLE);
+                chunk.push(BSC.DLE);
+            } else {
+                chunk.push(useDataBuffer[dataPtr]);
+            }
+            dataPtr++;
+            if ( dataPtr >= useDataBuffer.length ||
+                 chunk.length >= dataBlockLength ) {
+                // Note that we use transparent text mode here (regardless of the data content)
+                // because then we don't have be to concerned about only breaking the stream
+                // on command boundaries. See 3270 documentation on BSC usage.
+                frame = BSC.makeFrameCommand(chunk,
+                    /* isLastBlock = */ dataPtr >= useDataBuffer.length,
+                    /* useTransparentMode = */ true);
+                // Send it.
+                response = await this.sendFrameAndGetResponse(frame);
+                chunk = [];
+            }
+        }
     }
 }
 
