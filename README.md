@@ -64,3 +64,7 @@ I have a second IBM 3174, a model 51R. Perhaps I will try and attach this using 
 Another device that I have, is a INFORMER terminal, a SDLC/SNA variant. So it's pretty much the same as the above 3174 for getting this working. I think it is possible to use the V.24 port directly. If not, I do have a
 couple of SDLC capable synchronous modems.
 
+## Useful sources of information
+
+* IBM: General Information - Binary Synchronous Communications - GA27-3004
+
