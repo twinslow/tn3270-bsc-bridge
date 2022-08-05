@@ -7,12 +7,11 @@ const { crc16 } = require("crc");
 const { TelnetConnection, } = require("./telnet-client");
 const { hexDump } = require("./hex-dump");
 const { parseIntDecOrHex } = require("./parse-int-dec-or-hex");
+const { sleep } = require("./sleep");
 
-function sleep(ms) {
-    return new Promise((resolve) => {
-        setTimeout(resolve, ms);
-    });
-}
+const { 
+    SerialComms,
+    SerialCommsError } = require("./serial-comms");
 
 class BisyncTerminal {
 
@@ -57,10 +56,68 @@ class BisyncTerminal {
             await this.bisyncLine.sendData( this.pollAddress, this.lineSendQueue[x] );
         }
     }
+
+    async pollForInput() {
+        await sleep(10);
+        return;
+    }
 }
 
 class BscFrame extends Uint8Array {
+
+    static findStartOfFrame(frameData) {
+        let idx = 0;
+        while ( idx < frameData.length) {
+            if ( frameData[idx] !== BSC.LEADING_PAD &&
+                 frameData[idx] !== BSC.TRAILING_PAD &&
+                 frameData[idx] !== BSC.SYN )
+                 return idx;
+            idx++;
+        }
+    }
+
+    static findEndOfFrame(frameData) {
+        let idx = frameData.length - 1;
+        while (idx < frameData.length) {
+            if (frameData[idx] !== BSC.LEADING_PAD &&
+                frameData[idx] !== BSC.TRAILING_PAD &&
+                frameData[idx] !== BSC.SYN)
+                return idx + 1;
+            idx--;
+        }
+    }
+
+    static createFrame(frameData) {
+        if ( !(frameData instanceof Buffer) )
+            frameData = Buffer.from(frameData);
+
+        // Input data might be something like this ...
+        // PAD, PAD, SYNC, SYNC, SYNC, SYNC, DLE, ACK0, PAD, SYNC, SYNC, SYNC
+
+        // Find the start of the frame, ignoring 
+        // SYNC and PAD characters.
+        let startOfFrame = this.findStartOfFrame(frameData);
+
+        // Find the end of the frame, ignoring trailing PAD
+        let endOfFrame = this.findEndOfFrame(frameData);
+
+        // Return just the BSC frame such as
+        // ACK0, ACK1, NAK
+        // EOT
+        // SOH ... STX ... ETX
+        return new BscFrame(null,
+            frameData.subarray(startOfFrame, endOfFrame) );
+    }
+
     constructor(size = 300, initialData = null)  {
+        if ( initialData &&  
+             ( initialData instanceof Array ||
+               initialData instanceof Buffer ||
+               initialData instanceof Uint8Array ||
+               initialData instanceof Int8Array ) && 
+             size == null ) {
+            size = initialData.length;
+        }
         super(size);
         this.frameSize = 0;
         if ( initialData )
@@ -81,6 +138,43 @@ class BscFrame extends Uint8Array {
 
         this[this.frameSize++] = data;
     }
+
+    static FRAME_TYPE_EOT       = 1;
+    static FRAME_TYPE_ENQ       = 2;
+    static FRAME_TYPE_ACK       = 3;
+    static FRAME_TYPE_NAK       = 4;
+    static FRAME_TYPE_TEXT      = 5;
+    static FRAME_TYPE_TRANSPARENT_TEXT = 6;
+    static FRAME_TYPE_BAD       = -1;
+
+    getFrameType() {
+        if ( this[0] === BSC.EOT )
+            return BscFrame.FRAME_TYPE_EOT
+        else if ( this[0] === BSC.ENQ )
+            return BscFrame.FRAME_TYPE_ENQ;
+        else if ( this[0] === BSC.DLE &&
+                  this.frameSize === 2 &&
+                  ( this[1] === BSC.ACK0 || this[1] === BSC.ACK1 ) )
+            return BscFrame.FRAME_TYPE_ACK;
+        else if ( this[0] === BSC.NAK )
+            return BscFrame.FRAME_TYPE_NAK;
+        
+        // Can we find a DLE-STX
+        for ( let x = 0; x < this.frameSize - 1; x++ ) {
+            if ( this[x] === BSC.DLE &&
+                 this[x+1] === BSC.STX ) {
+                    return BscFrame.FRAME_TYPE_TRANSPARENT_TEXT
+            }
+        }    
+        // Can we find a STX
+        for (let x = 0; x < this.frameSize; x++) {
+            if (this[x] === BSC.STX) {
+                return BscFrame.FRAME_TYPE_TEXT
+            }
+        }
+        // Otherwise, bad frame.
+        return BscFrame.FRAME_TYPE_BAD;    
+    }
 }
 
 module.exports.BscFrame = BscFrame;
@@ -98,6 +192,7 @@ class BSC {
     static DLE   = 0x10;
     static NAK   = 0x3D;
     static ITB   = 0x1F; // IUS char
+    static EOT   = 0x37;
 
     // These are preceeded by a DLE
     static ACK0  = 0x70;
@@ -135,15 +230,26 @@ class BSC {
 /*      F */    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
     ]);
 
-    static makeFrameStart() {
-        let frame = new BscFrame(6);
-        frame.push([
-            BSC.LEADING_PAD, BSC.LEADING_PAD,
-            BSC.SYN, BSC.SYN,
-            BSC.EOT,
-            BSC.TRAILING_PAD
-        ]);
-        return frame;
+    static ADDRESS_CHARS_POLL = [
+        /*  0 -  7 */  0x40, 0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7, 
+        /*  8 - 15 */  0xC8, 0xC9, 0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F,
+        /* 16 - 23 */  0x50, 0xD1, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7,
+        /* 24 - 31 */  0xD8, 0xD9, 0x5A, 0x5B, 0x5C, 0x5D, 0x5E, 0x5F,
+    ];
+    
+    static ADDRESS_CHARS_SELECT = [
+        /*  0 -  7 */  0x60, 0x61, 0xE2, 0xE3, 0xE4, 0xE5, 0xE6, 0xE7,
+        /*  8 - 15 */  0xE8, 0xE9, 0x6A, 0x6B, 0x6C, 0x6D, 0x6E, 0x6F,
+        /* 16 - 23 */  0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7,
+        /* 24 - 31 */  0xF8, 0xF9, 0x7A, 0x7B, 0x7C, 0x7D, 0x7E, 0x7F,
+    ];
+
+    static getDevicePollChar(devAddress) {
+        return this.ADDRESS_CHARS_POLL[devAddress]; 
+    }
+
+    static getDeviceSelectChar(devAddress) {
+        return this.ADDRESS_CHARS_SELECT[devAddress];
     }
 
     static findStartEndForBcc(frame) {
@@ -201,14 +307,66 @@ class BSC {
     }
 
 
-    static makeFrameSelectAddress(cuAddress, devAddress) {
-        let frame = new BscFrame(7);
-        frame.push([
-            BSC.SYN, BSC.SYN,
-            cuAddress, cuAddress,
-            devAddress, devAddress,
+    static makeFrameEot() {
+        let frame = new BscFrame(null, [BSC.SYN, BSC.EOT, BSC.TRAILING_PAD]);
+        return frame;
+    }
+
+    /**
+     * Create a poll or select frame using the provided CU and
+     * terminal dev address characters.
+     * 
+     * @param {*} cuChar 
+     * @param {*} devChar 
+     * @returns the constructed BSC frame
+     */
+    static makeFramePollSelectAddress(cuChar, devChar) {
+        let frame = new BscFrame(null, [
+            BSC.SYN, BSC.EOT, BSC.TRAILING_PAD,
+            BSC.SYN,
+            cuChar, cuChar,
+            devChar, devChar,
             BSC.ENQ
         ]);
+        return frame;
+    }
+
+    /** 
+     * Make a select address frame, translating cuAddress to 
+     * appropriate EBCDIC character code for select addressing.
+     * Translate the terminal device address to an address
+     * character using the poll address table.
+     * 
+     * @param {*} cuAddress - The control unit address (device number)
+     * @param {*} devAddress - The terminal device address (device number)
+     * @returns the constructed BSC frame
+     */
+    static makeFrameSelectAddress(cuAddress, devAddress) {
+        // The CU, we use the select character.
+        let cuChar = this.getDeviceSelectChar(cuAddress);
+        // The terminal device, we use the poll character.
+        let devChar = this.getDevicePollChar(devAddress);
+
+        let frame = this.makeFramePollSelectAddress(cuChar, devChar);
+        return frame;
+    }
+
+    /**
+     * Make a poll address frame, translating cuAddress to 
+     * appropriate EBCDIC character code for poll addressing.
+     * Translate the terminal device address to an address
+     * character using the poll address table.
+     * 
+     * @param {*} cuAddress - The control unit address (device number)
+     * @param {*} devAddress - The terminal device address (device number)
+     * @returns the constructed BSC frame
+     */
+    static makeFramePollAddress(cuAddress, devAddress) {
+        // The CU and terminal, we use the poll character.
+        let cuChar = this.getDevicePollChar(cuAddress);
+        let devChar = this.getDevicePollChar(devAddress);
+
+        let frame = this.makeFramePollSelectAddress(cuChar, devChar);
         return frame;
     }
 
@@ -229,13 +387,11 @@ class BSC {
         // Use appropriate prefix
         if ( !useTransparentMode ) {
             frame.push([
-                BSC.SYN, BSC.SYN,
                 BSC.STX,
                 BSC.ESC,
             ]);
         } else {
             frame.push([
-                BSC.SYN, BSC.SYN,
                 BSC.DLE, BSC.STX,
                 BSC.ESC,
             ]);
@@ -290,25 +446,31 @@ class BSC {
         return frame;
     }
 
-    static makeFrameEnd() {
-        let frame = new BscFrame(5);
-        frame.push([
-            BSC.LEADING_PAD,
-            BSC.SYN, BSC.SYN,
-            BSC.EOT,
-            BSC.TRAILING_PAD
-        ]);
-        return frame;
-    }
-
 }
 
 module.exports.BSC = BSC;
+
+class BscErrorUnexpectedResponse extends Error {
+    constructor(msg) {
+        super(msg);
+    }
+}
+
+class BscErrorLineError extends Error {
+    constructor(msg) {
+        super(msg);
+    }
+}
 
 class BisyncLine {
 
     static telnetTerminalType = config.get("telnet.terminal-type");
     static FRAME_XMIT_RETRY_LIMIT = 3;
+    static RESPONSE_TIMEOUT = 1000;
+
+    static CMD_WRITE    = 0x01;
+    static CMD_READ     = 0x02;
+    static CMD_POLL     = 0x09;
 
     constructor() {
         this.devices = [];
@@ -323,7 +485,7 @@ class BisyncLine {
         terminalList.forEach( terminal => {
             this.addDevice(
                 terminal.address,
-                terminal.type || telnetTerminalType
+                terminal.type || BisyncLine.telnetTerminalType
             );
         });
     }
@@ -340,6 +502,7 @@ class BisyncLine {
         }
     }
 
+    
     async runLoop() {
         // do until shutdown ...
         while ( this.runFlag ) {
@@ -355,17 +518,24 @@ class BisyncLine {
         }
     }
 
+    async setupSerialPort() {
+        let portPath = config.get("line.serial-device");
+        this.serialComms = new SerialComms(portPath);
+    }
+
     async run() {
         this.controllerAddress = config.get("line.controller-address");
         this.serialDevice = config.get("line.serial-device");
         let terminalList = config.get("line.terminals");
+
+        await this.setupSerialPort();
 
         this.addDevices(terminalList);
 
         await this.connectDevices();
 
         this.runFlag = true;
-        await runLoop();
+        await this.runLoop();
 
         await sleep(10000);
 
@@ -376,20 +546,70 @@ class BisyncLine {
         this.runFlag = false;
     }
 
-    async sendFrame(frame) {
-        this.frameCount++;
+    async sendCommand(command, dataSize = 0) {
+        let cmd = Buffer.from([command, 0, 0]);
+        cmd[1] = (dataSize >> 8) & 0xFF;
+        cmd[2] = dataSize & 0xFF;
+        hexDump(logMgr.debug, 'Command out', 0x20, cmd, 3, false);
+        this.serialComms.sendSerial(cmd);
     }
 
+    async sendFrame(command, frame) {
+        this.frameCount++;
+        await this.sendCommand(command, frame.frameSize);
+
+        hexDump(logMgr.debug, 'BSC frame out', 0x20, frame, frame.frameSize, true);
+        this.serialComms.sendSerial(frame);
+    }
+
+    async getResponse() {
+        // Turn the line around and put the line in ready to receive /
+        // clear to send etc.
+        this.sendCommand(BisyncLine.CMD_READ);
+
+        let response = await this.serialComms.receiveSerial(
+            BisyncLine.RESPONSE_TIMEOUT);
+
+        if ( response.error ) {
+            logMgr.error(response.error);
+            throw new BscErrorLineError(response.error);
+        }
+
+        let responseFrameData = response.data;
+
+        logMgr.debug(`Returned from this.serialComms.receiveData() typeof responseFrameData is ${responseFrameData.constructor.name}`);
+
+        hexDump(logMgr.debug, 'BSC frame in', 0x20, responseFrameData, responseFrameData.length, true);
+        
+        let responseFrame = BscFrame.createFrame(responseFrameData);
+        return responseFrame;
+    }
+
+    /*
     async sendFrameAndGetResponse(frame) {
         let ack = false;
         let retries = 0;
+        let response;
         while ( !ack && retries <= BisyncLine.FRAME_XMIT_RETRY_LIMIT ) {
             await this.sendFrame(frame);
             // get response ...
+            response = await this.serialComms.receiveSerial(
+                BisyncLine.RESPONSE_TIMEOUT);
 
             // Check for ACK/NAK
+            if ( this.isAck(response) ) {
+                break;  
+            }
         }
         return response;
+    }
+    */
+    isAck(response) {
+        return true;
+    }
+
+    resetLine() {
+        this.frameCount = 0;
     }
 
     /**
@@ -401,13 +621,23 @@ class BisyncLine {
         if ( dataBuffer instanceof Buffer )
             useDataBUffer = Uint8Array(dataBuffer);
 
-        // Initiate transmit
-        await this.sendFrame(BSC.makeFrameTransmitStart());
+        // Reset line
+        this.resetLine();
+
         // Select
         let frame = BSC.makeFrameSelectAddress(this.controllerAddress, deviceSubAddress);
-        let response = await this.sendFrameAndGetResponse(frame);
+        this.sendFrame(BisyncLine.CMD_WRITE, frame);
 
+        // Turn the line around and put the line in ready to receive /
+        // clear to send etc.
+        this.sendCommand(BisyncLine.CMD_READ);
+        let response = await this.getResponse();
 
+        // Need an ACK back to continue
+        if ( response.getFrameType() != BscFrame.FRAME_TYPE_ACK )
+            throw new BscErrorUnexpectedResponse(response);
+
+        
         // Chop the dataBuffer into blocks, based on a length of 251 data characters
         let dataBlockLength = 251;
 
@@ -431,10 +661,19 @@ class BisyncLine {
                     /* isLastBlock = */ dataPtr >= useDataBuffer.length,
                     /* useTransparentMode = */ true);
                 // Send it.
-                response = await this.sendFrameAndGetResponse(frame);
+                this.sendFrame(BisyncLine.CMD_WRITE, frame);
+                this.sendCommand(BisyncLine.CMD_READ);
+                response = await this.getResponse();
+                if ( response.getFrameType() != BscFrame.FRAME_TYPE_ACK )
+                    throw new BscErrorUnexpectedResponse(response);
+
                 chunk = [];
             }
         }
+
+        frame = BSC.makeFrameEot();
+        this.sendFrame(BisyncLine.CMD_WRITE, frame);
+
     }
 }
 

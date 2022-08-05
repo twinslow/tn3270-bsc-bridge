@@ -1,16 +1,16 @@
 {
     "telnet": {
-        "host": "localhost",
+        "host": "otto.local",
         "port": 3270,
-        "terminal-type": "IBM-3279-3-E"
+        "terminal-type": "IBM-3278-2"
     },
     "line": {
-        "serial-device": "/dev/usb-xxxx",
-        "controller-address": "0xc1",
+        "serial-device": "/dev/tty.usbmodem144401",
+        "controller-address": "0x01",
         "terminals": [
             {
-                "address": "0x04",
-                "type": "IBM-3279-4-E"
+                "address": "0x00"
+//             ,"type": "IBM-3279-4-E"
             }
         ]
     },

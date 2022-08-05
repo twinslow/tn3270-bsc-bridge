@@ -19,6 +19,72 @@ describe("Testing class BscFrame", function() {
         sandbox.restore();
     });
 
+    it("Test static findStartOfFrame() function", function () {
+
+        expect( BscFrame.findStartOfFrame(
+            Buffer.from( [BSC.EOT] )
+        )).to.be.equal(0);
+
+        expect(BscFrame.findStartOfFrame(
+            Buffer.from([BSC.SYN, BSC.EOT])
+        )).to.be.equal(1);
+
+        expect(BscFrame.findStartOfFrame(
+            Buffer.from([BSC.LEADING_PAD, BSC.SYN, BSC.EOT])
+        )).to.be.equal(2);
+
+        expect(BscFrame.findStartOfFrame(
+            Buffer.from([BSC.SYN, BSC.SYN, BSC.EOT])
+        )).to.be.equal(2);
+
+        expect(BscFrame.findStartOfFrame(
+            Buffer.from([BSC.SYN, BSC.EOT, BSC.SYN, BSC.TRAILING_PAD])
+        )).to.be.equal(1);
+
+    });
+    it("Test static findEndOfFrame() function", function () {
+
+        expect(BscFrame.findEndOfFrame(
+            Buffer.from([BSC.EOT])
+        )).to.be.equal(1);
+
+        expect(BscFrame.findEndOfFrame(
+            Buffer.from([BSC.SYN, BSC.EOT, BSC.TRAILING_PAD])
+        )).to.be.equal(2);
+
+        expect(BscFrame.findEndOfFrame(
+            Buffer.from([BSC.SYN, BSC.EOT, BSC.TRAILING_PAD, BSC.SYN])
+        )).to.be.equal(2);
+
+        expect(BscFrame.findEndOfFrame(
+            Buffer.from([BSC.SYN, BSC.EOT, BSC.TRAILING_PAD, BSC.SYN, BSC.SYN])
+        )).to.be.equal(2);
+
+        expect(BscFrame.findEndOfFrame(
+            Buffer.from([BSC.SYN, BSC.EOT])
+        )).to.be.equal(2);
+
+    });
+    it("Test static createFrame() function", function () {
+
+        expect(BscFrame.createFrame(
+            Buffer.from([BSC.EOT])
+        )).to.be.deep.equal( new BscFrame(null, [BSC.EOT]));
+
+        expect(BscFrame.createFrame(
+            Buffer.from([BSC.SYN, BSC.EOT])
+        )).to.be.deep.equal(new BscFrame(null, [BSC.EOT]));
+
+        expect(BscFrame.createFrame(
+            Buffer.from([BSC.SYN, BSC.EOT, BSC.TRAILING_PAD])
+        )).to.be.deep.equal(new BscFrame(null, [BSC.EOT]));
+
+        expect(BscFrame.createFrame(
+            Buffer.from([BSC.SYN, BSC.EOT, BSC.TRAILING_PAD, BSC.SYN])
+        )).to.be.deep.equal(new BscFrame(null, [BSC.EOT]));
+
+    });
+
     it("Test push() function with single byte", function() {
 
         let obj = new BscFrame();
@@ -89,6 +155,25 @@ describe("Testing class BscFrame", function() {
         expect(obj[2]).to.be.equal(0x43);
 
     });
+    it("Test getFrameType() function == EOT", function () {
+
+        let obj = new BscFrame(null, [BSC.EOT]);
+        expect(obj.getFrameType()).to.be.equal(BscFrame.FRAME_TYPE_EOT);
+
+    });
+    it("Test getFrameType() function == ACK", function () {
+
+        let obj = new BscFrame(null, [BSC.DLE, BSC.ACK0]);
+        expect(obj.getFrameType()).to.be.equal(BscFrame.FRAME_TYPE_ACK);
+
+        obj = new BscFrame(null, [BSC.DLE, BSC.ACK1]);
+        expect(obj.getFrameType()).to.be.equal(BscFrame.FRAME_TYPE_ACK);
+
+        obj = new BscFrame(null, [BSC.DLE, BSC.STX]);
+        expect(obj.getFrameType()).to.be.not.equal(BscFrame.FRAME_TYPE_ACK);
+
+    });
+
 });
 
 describe("Testing class BSC", function() {
@@ -103,17 +188,6 @@ describe("Testing class BSC", function() {
         sandbox.restore();
     });
 
-    it("Test makeFrameStart() function", function() {
-
-        let frame = BSC.makeFrameStart();
-
-        expect(frame).to.be.deep.equal(new BscFrame( 6, [
-            BSC.LEADING_PAD, BSC.LEADING_PAD,
-            BSC.SYN, BSC.SYN,
-            BSC.EOT,
-            BSC.TRAILING_PAD
-        ]));
-    });
     it("Test findStartEndForBcc() function, STX...ETX", function() {
 
         let frame = new BscFrame(300,
@@ -196,12 +270,25 @@ describe("Testing class BSC", function() {
     });
     it("Test makeFrameSelectAddress() function", function() {
 
-        let frame = BSC.makeFrameSelectAddress( 0xC1, 0x41 );
+        let frame = BSC.makeFrameSelectAddress( 0x02, 0x01 );
 
-        expect(frame).to.be.deep.equal(new BscFrame( 7, [
-            BSC.SYN, BSC.SYN,
+        expect(frame).to.be.deep.equal(new BscFrame( null, [
+            BSC.SYN, BSC.EOT, BSC.TRAILING_PAD,
+            BSC.SYN,
+            0xE2, 0xE2,
             0xC1, 0xC1,
-            0x41, 0x41,
+            BSC.ENQ,
+        ]));
+    });
+    it("Test makeFramePollAddress() function", function () {
+
+        let frame = BSC.makeFramePollAddress(0x02, 0x01);
+
+        expect(frame).to.be.deep.equal(new BscFrame(null, [
+            BSC.SYN, BSC.EOT, BSC.TRAILING_PAD,
+            BSC.SYN,
+            0xC2, 0xC2,
+            0xC1, 0xC1,
             BSC.ENQ,
         ]));
     });
@@ -219,7 +306,7 @@ describe("Testing class BSC", function() {
         let frame = BSC.createFrameWithPrefix(false);
 
         expect(frame).to.be.deep.equal(new BscFrame(300,
-            [BSC.SYN, BSC.SYN, BSC.STX, BSC.ESC]));
+            [BSC.STX, BSC.ESC]));
 
     });
     it("Test createFrameWithPrefix() function - transparentMode = true", function() {
@@ -227,7 +314,7 @@ describe("Testing class BSC", function() {
         let frame = BSC.createFrameWithPrefix(true);
 
         expect(frame).to.be.deep.equal(new BscFrame(300,
-            [BSC.SYN, BSC.SYN, BSC.DLE, BSC.STX, BSC.ESC]));
+            [BSC.DLE, BSC.STX, BSC.ESC]));
 
     });
     it("Test addEndOfText() function", function() {
@@ -325,16 +412,11 @@ describe("Testing class BSC", function() {
 
         expect(frame1).to.be.deep.equal(new BscFrame(300, [0x41, 0x42, 0x43, 0xF1, 0xF2]));
     });
-    it("Test makeFrameStart() function", function() {
+    it("Test makeFrameEot() function", function() {
+        let frame = BSC.makeFrameEot();
 
-        let frame = BSC.makeFrameEnd();
-
-        expect(frame).to.be.deep.equal(new BscFrame( 6, [
-            BSC.LEADING_PAD, BSC.LEADING_PAD,
-            BSC.SYN, BSC.SYN,
-            BSC.EOT,
-            BSC.TRAILING_PAD
-        ]));
+        expect(frame).to.be.deep.equal(new BscFrame( null, 
+            [BSC.SYN, BSC.EOT, BSC.TRAILING_PAD]));
     });
 
 
