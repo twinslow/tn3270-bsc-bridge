@@ -188,6 +188,17 @@ describe("Testing class BSC", function() {
         sandbox.restore();
     });
 
+    it("Test getDevicePollChar() function", function () {
+
+        expect(BSC.getDevicePollChar(0x00)).to.be.equal(0x40);
+        expect(BSC.getDevicePollChar(0x01)).to.be.equal(0xC1);
+    });
+    it("Test getDeviceSelectChar() function", function () {
+
+        expect(BSC.getDeviceSelectChar(0x00)).to.be.equal(0x60);
+        expect(BSC.getDeviceSelectChar(0x01)).to.be.equal(0x61);
+    });
+
     it("Test findStartEndForBcc() function, STX...ETX", function() {
 
         let frame = new BscFrame(300,
@@ -277,6 +288,18 @@ describe("Testing class BSC", function() {
             BSC.SYN,
             0xE2, 0xE2,
             0xC1, 0xC1,
+            BSC.ENQ,
+        ]));
+    });
+    it("Test makeFrameSelectAddress() function", function () {
+
+        let frame = BSC.makeFrameSelectAddress(0x01, 0x00 );
+
+        expect(frame).to.be.deep.equal(new BscFrame(null, [
+            BSC.SYN, BSC.EOT, BSC.TRAILING_PAD,
+            BSC.SYN,
+            0x61, 0x61,
+            0x40, 0x40,
             BSC.ENQ,
         ]));
     });

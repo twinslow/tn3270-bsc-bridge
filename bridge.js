@@ -249,7 +249,7 @@ class BSC {
     }
 
     static getDeviceSelectChar(devAddress) {
-        return this.ADDRESS_CHARS_SELECT[devAddress];
+        return BSC.ADDRESS_CHARS_SELECT[devAddress];
     }
 
     static findStartEndForBcc(frame) {
@@ -343,10 +343,9 @@ class BSC {
      */
     static makeFrameSelectAddress(cuAddress, devAddress) {
         // The CU, we use the select character.
-        let cuChar = this.getDeviceSelectChar(cuAddress);
+        let cuChar = BSC.getDeviceSelectChar(cuAddress);
         // The terminal device, we use the poll character.
-        let devChar = this.getDevicePollChar(devAddress);
-
+        let devChar = BSC.getDevicePollChar(devAddress);
         let frame = this.makeFramePollSelectAddress(cuChar, devChar);
         return frame;
     }
@@ -521,6 +520,7 @@ class BisyncLine {
     async setupSerialPort() {
         let portPath = config.get("line.serial-device");
         this.serialComms = new SerialComms(portPath);
+        this.serialComms.start();
     }
 
     async run() {
@@ -547,11 +547,7 @@ class BisyncLine {
     }
 
     async sendCommand(command, dataSize = 0) {
-        let cmd = Buffer.from([command, 0, 0]);
-        cmd[1] = (dataSize >> 8) & 0xFF;
-        cmd[2] = dataSize & 0xFF;
-        hexDump(logMgr.debug, 'Command out', 0x20, cmd, 3, false);
-        this.serialComms.sendSerial(cmd);
+        this.serialComms.sendCommand(command, dataSize);
     }
 
     async sendFrame(command, frame) {
@@ -565,7 +561,7 @@ class BisyncLine {
     async getResponse() {
         // Turn the line around and put the line in ready to receive /
         // clear to send etc.
-        this.sendCommand(BisyncLine.CMD_READ);
+        //await this.sendCommand(BisyncLine.CMD_READ);
 
         let response = await this.serialComms.receiveSerial(
             BisyncLine.RESPONSE_TIMEOUT);
@@ -624,13 +620,15 @@ class BisyncLine {
         // Reset line
         this.resetLine();
 
+        logMgr.debug(`Controller address = ${this.controllerAddress}, deviceSubAddress=${deviceSubAddress}`);
+
         // Select
         let frame = BSC.makeFrameSelectAddress(this.controllerAddress, deviceSubAddress);
-        this.sendFrame(BisyncLine.CMD_WRITE, frame);
+        await this.sendFrame(BisyncLine.CMD_WRITE, frame);
 
         // Turn the line around and put the line in ready to receive /
         // clear to send etc.
-        this.sendCommand(BisyncLine.CMD_READ);
+        await this.sendCommand(BisyncLine.CMD_READ);
         let response = await this.getResponse();
 
         // Need an ACK back to continue

@@ -6,10 +6,10 @@
     },
     "line": {
         "serial-device": "/dev/tty.usbmodem144401",
-        "controller-address": "0x01",
+        "controller-address": 1,
         "terminals": [
             {
-                "address": "0x00"
+                "address": 0
 //             ,"type": "IBM-3279-4-E"
             }
         ]
