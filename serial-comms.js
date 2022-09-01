@@ -15,6 +15,7 @@ class SerialComms {
     static CMD_READ = 0x02;
     static CMD_POLL = 0x05;
     static CMD_DEBUG = 0x09;
+    static CMD_RESET = 0x20;
 
     static TIMEOUT = "Response timeout";
 
@@ -42,6 +43,7 @@ class SerialComms {
             xthis.hexDump(logMgr.debug, 'Serial-in', 0x20, data, data.length, true);
             xthis.processInboundData(data);
         });
+
     }
 
     processInboundCommand(cmd, cmdLen, data) {
@@ -68,7 +70,7 @@ class SerialComms {
         while ( ptr < data.length ) {
             if ( ptr + 3 <= data.length ) {
                 let cmd = data[ptr];
-                let cmdLen = data[ptr + 1] + 256 * data[ptr + 2];
+                let cmdLen = data[ptr + 1]*256 + data[ptr + 2];
                 if ( ptr + 3 + cmdLen <= data.length ) {
                     let cmdData = data.slice(ptr + 3, ptr + 3 + cmdLen);
                     this.processInboundCommand(cmd, cmdLen, cmdData);

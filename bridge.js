@@ -465,7 +465,7 @@ class BisyncLine {
 
     static telnetTerminalType = config.get("telnet.terminal-type");
     static FRAME_XMIT_RETRY_LIMIT = 3;
-    static RESPONSE_TIMEOUT = 1000;
+    static RESPONSE_TIMEOUT = 20000;
 
     static CMD_WRITE    = 0x01;
     static CMD_READ     = 0x02;
@@ -531,8 +531,12 @@ class BisyncLine {
         await this.setupSerialPort();
 
         this.addDevices(terminalList);
+        await sleep(3000);
 
         await this.connectDevices();
+
+        await sleep(1000);
+        await this.sendCommand(SerialComms.CMD_RESET);
 
         this.runFlag = true;
         await this.runLoop();
@@ -568,7 +572,9 @@ class BisyncLine {
 
         if ( response.error ) {
             logMgr.error(response.error);
-            throw new BscErrorLineError(response.error);
+
+            //throw new BscErrorLineError(response.error);
+            return;
         }
 
         let responseFrameData = response.data;
