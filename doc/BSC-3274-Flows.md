@@ -31,18 +31,18 @@ CCW: Write (CC) - Send Poll
 
 Responses are ...
 
-A. No response -- (device unavailable) and timeout
-B. EOT -- The device has no data to send
-C. Status Message
-   SOH % R STX cuPoll devAddr S/S-0 S/S-1 ETX BCC
-D. Test request message
-   SOH % / STX text ETX|ETB BCC
-E. Read modified or short read modified response
-   STX cuPoll devAddr text ETX|ETB BCC
-F. Read partition (query)
-   DLE STX cuPoll devAddr text DLE ETX BCC
+* No response -- (device unavailable) and timeout
+* EOT -- The device has no data to send
+* Status Message
+  SOH % R STX cuPoll devAddr S/S-0 S/S-1 ETX BCC
+* Test request message
+  SOH % / STX text ETX|ETB BCC
+* Read modified or short read modified response
+  STX cuPoll devAddr text ETX|ETB BCC
+* Read partition (query)
+  DLE STX cuPoll devAddr text DLE ETX BCC
 
-A test request message (D) is generated  when TEST REQ or SYS REQ key is pressed
+A test request message is generated  when TEST REQ or SYS REQ key is pressed
 on terminal keyboard.
 
 If multiple blocks of text are sent then the address bytes are only included in
@@ -51,7 +51,7 @@ the first block.
 The host responds to each block of text with an ACK0|1, or a NAK. After the last
 text block is responded to with an ACK, the 3270 will send an EOT.
 
-### Example of (E) Read Modified poll responses
+### Example of Read Modified poll responses
 
 ```
 HOST --> LPAD LPAD SYN SYN cuPoll cuPoll devAddr devAddr ENQ PAD
