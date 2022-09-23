@@ -31,16 +31,16 @@ CCW: Write (CC) - Send Poll
 
 Responses are ...
 
-A) No response -- (device unavailable) and timeout
-B) EOT -- The device has no data to send
-C) Status Message
-    SOH % R STX cuPoll devAddr S/S-0 S/S-1 ETX BCC
-D) Test request message
-    SOH % / STX text ETX|ETB BCC
-E) Read modified or short read modified response
-    STX cuPoll devAddr text ETX|ETB BCC
-F) Read partition (query)
-    DLE STX cuPoll devAddr text DLE ETX BCC
+A. No response -- (device unavailable) and timeout
+B. EOT -- The device has no data to send
+C. Status Message
+   SOH % R STX cuPoll devAddr S/S-0 S/S-1 ETX BCC
+D. Test request message
+   SOH % / STX text ETX|ETB BCC
+E. Read modified or short read modified response
+   STX cuPoll devAddr text ETX|ETB BCC
+F. Read partition (query)
+   DLE STX cuPoll devAddr text DLE ETX BCC
 
 A test request message (D) is generated  when TEST REQ or SYS REQ key is pressed
 on terminal keyboard.
