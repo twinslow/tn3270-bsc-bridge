@@ -22,44 +22,48 @@ General and Specific Poll Flows
 -------------------------------
 
 CCW: Write (CC) - Send EOT (line reset)
-                  LPAD LPAD SYN SYN EOT PAD
+
+`LPAD LPAD SYN SYN EOT PAD`
 
 CCW: Write (CC) - Send Poll
-                  LPAD LPAD SYN SYN cuPoll cuPoll devAddr devAddr ENQ PAD
 
-                  Responses are ...
-                  A) No response -- (device unavailable) and timeout
-                  B) EOT -- The device has no data to send
-                  C) Status Message
-                     SOH % R STX cuPoll devAddr S/S-0 S/S-1 ETX BCC
-                  D) Test request message
-                     SOH % / STX text ETX|ETB BCC
-                  E) Read modified or short read modified response
-                     STX cuPoll devAddr text ETX|ETB BCC
-                  F) Read partition (query)
-                     DLE STX cuPoll devAddr text DLE ETX BCC
+`LPAD LPAD SYN SYN cuPoll cuPoll devAddr devAddr ENQ PAD`
 
-                  A test request message (D) is generated  when TEST REQ or SYS REQ key is pressed
-                  on terminal keyboard.
+Responses are ...
 
-                  If multiple blocks of text are sent then the address bytes are only included in
-                  the first block.
+A) No response -- (device unavailable) and timeout
+B) EOT -- The device has no data to send
+C) Status Message
+    SOH % R STX cuPoll devAddr S/S-0 S/S-1 ETX BCC
+D) Test request message
+    SOH % / STX text ETX|ETB BCC
+E) Read modified or short read modified response
+    STX cuPoll devAddr text ETX|ETB BCC
+F) Read partition (query)
+    DLE STX cuPoll devAddr text DLE ETX BCC
 
-                  The host responds to each block of text with an ACK0|1, or a NAK. After the last
-                  text block is responded to with an ACK, the 3270 will send an EOT.
+A test request message (D) is generated  when TEST REQ or SYS REQ key is pressed
+on terminal keyboard.
 
-                  ### Example of (E) Read Modified poll responses
+If multiple blocks of text are sent then the address bytes are only included in
+the first block.
 
-                  HOST --> LPAD LPAD SYN SYN cuPoll cuPoll devAddr devAddr ENQ PAD
-                  3270 --> LPAD LPAD SYN SYN EOT PAD
+The host responds to each block of text with an ACK0|1, or a NAK. After the last
+text block is responded to with an ACK, the 3270 will send an EOT.
 
-                  HOST --> LPAD LPAD SYN SYN cuPoll cuPoll devAddr devAddr ENQ PAD
-                  3270 --> LPAD LPAD SYN SYN STX cuPoll devAddr ****text**** ETB BCC1 BCC2 PAD
-                  HOST --> LPAD LPAD SYN SYN ACK1 PAD
-                  3270 --> LPAD LPAD SYN SYN STX ****text**** ETX BCC1 BCC2 PAD
-                  HOST --> LPAD LPAD SYN SYN ACK0 PAD
-                  3270 --> LPAD LPAD SYN SYN EOT PAD
+### Example of (E) Read Modified poll responses
 
+```
+HOST --> LPAD LPAD SYN SYN cuPoll cuPoll devAddr devAddr ENQ PAD
+3270 --> LPAD LPAD SYN SYN EOT PAD
+
+HOST --> LPAD LPAD SYN SYN cuPoll cuPoll devAddr devAddr ENQ PAD
+3270 --> LPAD LPAD SYN SYN STX cuPoll devAddr ****text**** ETB BCC1 BCC2 PAD
+HOST --> LPAD LPAD SYN SYN ACK1 PAD
+3270 --> LPAD LPAD SYN SYN STX ****text**** ETX BCC1 BCC2 PAD
+HOST --> LPAD LPAD SYN SYN ACK0 PAD
+3270 --> LPAD LPAD SYN SYN EOT PAD
+```
 
 
 
