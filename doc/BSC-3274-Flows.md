@@ -92,7 +92,7 @@ CCW: Write (CC) - Send SELECT
 
 CCW: Read
 
-Responses are ...
+Responses to the select are ...
 
 * No response - timeout
 * RVI - The addressed device has pending status
@@ -103,7 +103,7 @@ CCW: Write (CC)
 
 `LPAD LPAD SYN SYN STX ESC command-code ****text**** ETB|ETX BCC1 BCC2 PAD`
 
-After last block sent ...
+And after the last block sent and acknowledged...
 
 `LPAD LPAD SYN SYN EOT PAD`
 
@@ -123,14 +123,15 @@ Responses are ...
 ```
 HOST --> LPAD LPAD SYN SYN EOT PAD
 HOST --> LPAD LPAD SYN SYN cuSelect cuSelect devAddr devAddr ENQ PAD
-3270 --> LPAD LPAD SYN SYN ACK1 PAD
-HOST --> LPAD LPAD SYN SYN STX ESC EW WCC ****3270*orders**** ETB BCC1 BCC2 PAD
 3270 --> LPAD LPAD SYN SYN ACK0 PAD
-HOST --> LPAD LPAD SYN SYN STX ESC ****3270*orders**** ETX BCC1 BCC2 PAD
+HOST --> LPAD LPAD SYN SYN STX ESC EW WCC ****3270*orders**** ETB BCC1 BCC2 PAD
 3270 --> LPAD LPAD SYN SYN ACK1 PAD
+HOST --> LPAD LPAD SYN SYN STX ESC ****3270*orders**** ETX BCC1 BCC2 PAD
+3270 --> LPAD LPAD SYN SYN ACK0 PAD
 HOST --> LPAD LPAD SYN SYN EOT PAD
 ```
 
-Note that orders cannot be split across a block in non-transparent mode. For example a text block can't end with an SBA order byte and then the following block to start with the buffer address bytes.
+Note that orders cannot be split across a block in non-transparent mode. For example a text block can't
+end with an SBA order byte and then the following block to start with the buffer address bytes.
 
 
