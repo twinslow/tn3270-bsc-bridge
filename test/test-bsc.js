@@ -173,6 +173,25 @@ describe("Testing class BscFrame", function() {
         expect(obj.getFrameType()).to.be.not.equal(BscFrame.FRAME_TYPE_ACK);
 
     });
+    it("Test create frame and then push extra", function () {
+
+        let obj = new BscFrame(300, [BSC.STX, 0x40, BSC.ETX]);
+
+        expect(obj.frameSize).to.be.equal(3);
+
+        obj.push(0x44);
+        expect(obj.frameSize).to.be.equal(4);
+
+        obj.push(0x55);
+        expect(obj.frameSize).to.be.equal(5);
+
+        expect(obj[0]).to.be.equal(BSC.STX);
+        expect(obj[1]).to.be.equal(0x40);
+        expect(obj[2]).to.be.equal(BSC.ETX);
+        expect(obj[3]).to.be.equal(0x44);
+        expect(obj[4]).to.be.equal(0x55);
+
+    });
 
 });
 

@@ -5,8 +5,9 @@
         "terminal-type": "IBM-3278-2"
     },
     "line": {
-        "serial-device": "/dev/tty.usbmodem144401",
-        "controller-address": 1,
+//        "serial-device": "/dev/tty.usbmodem144401",
+        "serial-device": "/dev/tty.usbmodem1443201",
+        "controller-address": 0,
         "terminals": [
             {
                 "address": 0

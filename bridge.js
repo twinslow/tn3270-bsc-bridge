@@ -59,7 +59,7 @@ class BisyncTerminal {
 
     async pollForInput() {
         await sleep(10);
-        return;
+        await this.bisyncLine.sendPoll( this.pollAddress );
     }
 }
 
@@ -319,14 +319,16 @@ class BSC {
      * @param {*} cuChar 
      * @param {*} devChar 
      * @returns the constructed BSC frame
-     */
+     */x
     static makeFramePollSelectAddress(cuChar, devChar) {
         let frame = new BscFrame(null, [
             BSC.SYN, BSC.EOT, BSC.TRAILING_PAD,
-            BSC.SYN,
+            BSC.SYN, BSC.SYN, BSC.SYN, BSC.SYN,
+            BSC.LEADING_PAD, BSC.LEADING_PAD,
+            BSC.SYN, BSC.SYN,
             cuChar, cuChar,
             devChar, devChar,
-            BSC.ENQ
+            BSC.ENQ, BSC.TRAILING_PAD
         ]);
         return frame;
     }
@@ -505,15 +507,15 @@ class BisyncLine {
     async runLoop() {
         // do until shutdown ...
         while ( this.runFlag ) {
-            // For each device, send any queued data on the BSC line.
-            for ( let x=0; x<this.devices.length; x++) {
-                await this.devices[x].sendQueuedData();
-            }
-
             // For each device, poll for input
-            for ( let x=0; x<this.devices.length; x++) {
+            for (let x = 0; x < this.devices.length; x++) {
                 await this.devices[x].pollForInput();
             }
+            // For each device, send any queued data on the BSC line.
+            // for ( let x=0; x<this.devices.length; x++) {
+            //     await this.devices[x].sendQueuedData();
+            // }
+
         }
     }
 
@@ -523,6 +525,84 @@ class BisyncLine {
         this.serialComms.start();
     }
 
+
+    async testRun() {
+        let frame;
+        while(1) {
+
+            // **** 1 ******
+            // EOT and POLL
+            frame = new BscFrame(null, Buffer.from([
+                BSC.TRAILING_PAD, BSC.LEADING_PAD, BSC.LEADING_PAD,
+                BSC.SYN, BSC.SYN, BSC.EOT,
+                BSC.TRAILING_PAD,
+                BSC.TRAILING_PAD,
+                BSC.SYN, BSC.SYN,
+                0x40, 0x40, 0x40, 0x40,
+                BSC.ENQ,
+                BSC.TRAILING_PAD
+            ]));
+            await this.sendFrame(BisyncLine.CMD_WRITE, frame);
+            await sleep(300);
+
+
+            // **** 2 *****
+            await sleep(1);
+
+
+            // EOT
+            frame = new BscFrame(null, Buffer.from([
+                BSC.TRAILING_PAD, BSC.LEADING_PAD, BSC.LEADING_PAD,
+                BSC.SYN, BSC.SYN, BSC.EOT,
+                BSC.TRAILING_PAD,
+            ]));
+            await this.sendFrame(BisyncLine.CMD_WRITE, frame);
+            await sleep(200);
+
+            // SELECT
+            frame = new BscFrame(null, Buffer.from([
+                BSC.TRAILING_PAD,
+                BSC.SYN, BSC.SYN,
+                0x60, 0x60, 0x40, 0x40,
+                BSC.ENQ,
+                BSC.TRAILING_PAD
+
+            ]));
+            await this.sendFrame(BisyncLine.CMD_WRITE, frame);
+            await sleep(100);
+
+            // **** 3 *****
+            frame = new BscFrame(null, Buffer.from([
+                BSC.SYN, BSC.SYN,
+                BSC.DLE, BSC.STX,
+                0x27, 0xF5, 0x42, 
+                0x11, 0x40, 0x40,
+                0x1D, 0x60, 
+                0xC8, 0xC5, 0xD3, 0xD3, 0xD6, 0x40, 0xE6, 0xD6, 0xD9,
+                0x40, 0x40,   
+                0x13, 
+                BSC.DLE, BSC.ETX,
+            ]));
+            //BSC.addBccToFrame(frame);
+            //frame.push(BSC.TRAILING_PAD);
+            await this.sendFrame(BisyncLine.CMD_WRITE, frame);
+            await sleep(3000);
+
+            frame = new BscFrame(null, Buffer.from([
+                BSC.SYN, BSC.SYN,
+                BSC.STX, 
+                0x27, 0xF6, 
+                BSC.ETX,
+            ]));
+            //BSC.addBccToFrame(frame);
+            //frame.push(BSC.TRAILING_PAD);
+            await this.sendFrame(BisyncLine.CMD_WRITE, frame);
+            await sleep(2000);
+
+        }
+
+    }
+
     async run() {
         this.controllerAddress = config.get("line.controller-address");
         this.serialDevice = config.get("line.serial-device");
@@ -530,20 +610,24 @@ class BisyncLine {
 
         await this.setupSerialPort();
 
-        this.addDevices(terminalList);
-        await sleep(3000);
+//        this.addDevices(terminalList);
+//        await sleep(3000);
 
-        await this.connectDevices();
+//        await this.connectDevices();
 
         await sleep(1000);
         await this.sendCommand(SerialComms.CMD_RESET);
 
-        this.runFlag = true;
-        await this.runLoop();
+        await sleep(10000);
+        await this.testRun();
+
+
+        // this.runFlag = true;
+        // await this.runLoop();
 
         await sleep(10000);
 
-        await this.closeDevices();
+//        await this.closeDevices();
     }
 
     async stop() {
@@ -612,6 +696,16 @@ class BisyncLine {
 
     resetLine() {
         this.frameCount = 0;
+    }
+
+    async sendPoll( deviceSubAddress ) {
+        let frame = BSC.makeFramePollAddress(this.controllerAddress, deviceSubAddress);
+        await this.sendFrame(BisyncLine.CMD_WRITE, frame);
+        // Turn the line around and put the line in ready to receive /
+        // clear to send etc.
+        await this.sendCommand(BisyncLine.CMD_READ);
+        let response = await this.getResponse();
+
     }
 
     /**
