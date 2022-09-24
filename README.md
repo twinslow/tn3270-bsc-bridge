@@ -75,6 +75,21 @@ The Project
 Major Components
 ----------------
 
+Here's a more detailed view of the components of the bridge software.
+
+```mermaid
+flowchart TD
+    bridge["Main software setup"]
+    bisyncLine["The BSC line handler and is responsible for comms to the USB-BSC-dongle"]
+    bscTerminal["BSC attached terminal"]
+    tn3270["Communications to the telnet TN3270 server, per terminal"]
+
+    bridge <-->|Creates the instance for the BSC line|bisyncLine
+    bisyncLine -->|Creates BscTerminal instances for each attached terminal|bscTerminal
+    bscTerminal -->|Creates the TerminalToTn3270 instance to handle TN3270 telnet session|tn3270
+
+```
+
 
 
 Sample BSC flows
