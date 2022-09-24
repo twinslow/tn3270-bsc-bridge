@@ -69,3 +69,17 @@ couple of SDLC capable synchronous modems.
 * IBM: General Information - Binary Synchronous Communications - GA27-3004
 * IBM: 3274 Control Unit Description and Programmers Guide - GA23-0061. See section on "Remote Operations -- BSC".
 
+The Project
+===========
+
+Major Components
+----------------
+
+
+
+Sample BSC flows
+----------------
+
+[Some sample flows are documented here](doc/BSC-3274-Flows.md)
+
+

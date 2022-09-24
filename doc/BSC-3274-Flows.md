@@ -1,5 +1,5 @@
-BSC Protocol Flows Between Host and 3270 Control Unit
-=====================================================
+BSC Protocol Flows Between Host and 3274/3174 Control Unit
+==========================================================
 
 The standard method for connecting a BSC 3274 controller to the host was via the 2703
 communications controller with a BSC adapter. Communications from the host would be
@@ -22,7 +22,8 @@ GA23-0061-2.
 See section on "Remote Operations -- BSC".
 ```
 
-In this intereface implementation the usb-bsc-dongle hardware/firmware are sending the BSC flows over the communications line.
+In this intereface implementation the usb-bsc-dongle hardware/firmware are sending the BSC
+flows over the communications line.
 
 General and Specific Poll Flows
 ===============================
