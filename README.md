@@ -41,9 +41,9 @@ This project, the TN3270 BSC bridge is (or will be) responsible for --
 
 ## Why is this in Javascript?
 
-In my professional paid work, I have been developing mostly back-end code in Javascript. As this is what I'm
-currently working with, and I haven't done any C# or Java for a little while, Javascript was comfortable for me.
-C and C++ are even longer ago if I don't count the small amount I've been doing for the Arduino USB to BSC dongle.
+In my professional paid work, I have been developing mostly back-end code in Javascript for the last 4 years. As this is what I'm currently working with, and I haven't done any C# or Java for a little while, Javascript was comfortable for me. It is not the most ideal platform for this type of work, but is adequate.
+
+C and C++ are even longer ago, if I don't count the small amount I've been doing for the Arduino USB to BSC dongle.
 I may well decide to convert this code to another language at some time in the future.
 
 ## What's working (as of 7/23/2022)
