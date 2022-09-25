@@ -9,9 +9,7 @@ const { parseIntDecOrHex } = require("./parse-int-dec-or-hex");
 const { sleep } = require("./sleep");
 
 const { SerialComms, SerialResponse, SerialCommsError } = require("./serial-comms");
-
 const { BscFrame, BscFrameCreator, ResponseBscFrame } = require('./bsc-frame');
-
 const { BSC, EBCDIC} = require('./bsc-protocol');
 
 /**
@@ -468,7 +466,7 @@ class BisyncLine {
     async stop() {
         this.runFlag = false;
     }
-
+/*
     async sendCommand(command, dataSize = 0) {
         this.serialComms.sendCommand(command, dataSize);
     }
@@ -479,7 +477,7 @@ class BisyncLine {
         hexDump(logMgr.debug, 'BSC frame out', 0x20, frame, frame.frameSize, true);
         this.serialComms.sendSerial(frame);
     }
-
+*/
     translateSerialResponseCode(code) {
         switch(code) {
             case SerialComms.CMD_RESPONSE_OK:
@@ -500,6 +498,7 @@ class BisyncLine {
         return responseBscFrame;
     }
 
+/*
     async getResponse() {
         // Turn the line around and put the line in ready to receive /
         // clear to send etc.
@@ -524,8 +523,8 @@ class BisyncLine {
         let responseFrame = BscFrame.createFrame(responseFrameData);
         return responseFrame;
     }
-
-    /*
+*/
+/*
     async sendFrameAndGetResponse(frame) {
         let ack = false;
         let retries = 0;
@@ -543,7 +542,6 @@ class BisyncLine {
         }
         return response;
     }
-    */
     isAck(response) {
         return true;
     }
@@ -561,11 +559,12 @@ class BisyncLine {
         let response = await this.getResponse();
 
     }
-
+*/
     /**
      *  Send the data across the serial line, constructing BSC frames and awaiting
      *  for ACKs.
      */
+/*
     async sendData( deviceSubAddress, dataBuffer ) {
         let useDataBuffer = dataBuffer;
         if ( dataBuffer instanceof Buffer )
@@ -610,8 +609,8 @@ class BisyncLine {
                 // because then we don't have be to concerned about only breaking the stream
                 // on command boundaries. See 3270 documentation on BSC usage.
                 frame = BSC.makeFrameCommand(chunk,
-                    /* isLastBlock = */ dataPtr >= useDataBuffer.length,
-                    /* useTransparentMode = */ true);
+                    dataPtr >= useDataBuffer.length,
+                    true);
                 // Send it.
                 this.sendFrame(BisyncLine.CMD_WRITE, frame);
                 this.sendCommand(BisyncLine.CMD_READ);
@@ -627,6 +626,8 @@ class BisyncLine {
         this.sendFrame(BisyncLine.CMD_WRITE, frame);
 
     }
+*/
+
 }
 
 module.exports.BisyncTerminal = TerminalToTn3270;
