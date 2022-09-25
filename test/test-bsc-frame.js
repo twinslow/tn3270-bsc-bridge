@@ -314,6 +314,162 @@ describe("Testing class BscFrame", function() {
 
         expect(frame).to.be.deep.equal(expectedFrame);
     });
+    it("Test automatic BCC calculator and insert, for non transparent data", function() {
+
+        let frame = new BscFrame();
+        frame.pushDataByte(BSC.SYN);
+        frame.pushDataByte(BSC.STX);
+        frame.pushDataByte(0x41);
+        frame.pushDataByte(0x42);
+        frame.pushDataByte(0x43);
+        frame.pushDataByte(BSC.ETX);
+
+        let expectedFrame = new BscFrame(300,
+            [ BSC.SYN, BSC.STX, 0x41, 0x42, 0x43, BSC.ETX, 0xC5, 0x19] );
+
+        expect(frame).to.be.deep.equal(expectedFrame);
+    });
+    it("Test automatic BCC calculator and insert, for transparent data", function() {
+
+        let frame = new BscFrame();
+        frame.pushDataByte(BSC.SYN);
+        frame.pushEscapedDataByte(BSC.STX);
+        frame.pushDataByte(0x41);
+        frame.pushDataByte(0x42);
+        frame.pushDataByte(0x43);
+        frame.pushEscapedDataByte(BSC.ETX);
+
+        let expectedFrame = new BscFrame(300,
+            [ BSC.SYN, BSC.DLE, BSC.STX, 0x41, 0x42, 0x43, BSC.DLE, BSC.ETX, 0xC5, 0x19] );
+
+        expect(frame.slice(0,frame.frameSize)).to.be.deep.equal(expectedFrame.slice(0,expectedFrame.frameSize));
+    });
+    it("Test automatic BCC calculator and insert, for transparent data, with embedded DLE as data", function() {
+
+        let frame = new BscFrame();
+        frame.pushDataByte(BSC.SYN);
+        frame.pushEscapedDataByte(BSC.STX);
+        frame.pushDataByte(0x41);
+        frame.pushDataByte(0x42);
+        frame.pushDataByte(0x10);
+        frame.pushDataByte(0x43);
+        frame.pushEscapedDataByte(BSC.ETX);
+
+        let expectedFrame = new BscFrame(300,
+            [ BSC.SYN, BSC.DLE, BSC.STX, 0x41, 0x42, 0x10, 0x10, 0x43, BSC.DLE, BSC.ETX, 0x58, 0x83] );
+
+        expect(frame.slice(0,frame.frameSize)).to.be.deep.equal(expectedFrame.slice(0,expectedFrame.frameSize));
+    });
+    it("Test automatic BCC calculator and insert, for transparent data, with embedded DLE as data and STX as data", function() {
+
+        let frame = new BscFrame();
+        frame.pushDataByte(BSC.SYN);
+        frame.pushEscapedDataByte(BSC.STX);
+        frame.pushDataByte(0x41);
+        frame.pushDataByte(0x42);
+        frame.pushDataByte(BSC.STX);    // This is just data 0x02
+        frame.pushDataByte(BSC.DLE);    // This is just data 0x10
+        frame.pushDataByte(0x43);
+        frame.pushEscapedDataByte(BSC.ETX);
+
+        let expectedFrame = new BscFrame(300,
+            [ BSC.SYN, BSC.DLE, BSC.STX, 0x41, 0x42,0x02, 0x10, 0x10, 0x43, BSC.DLE, BSC.ETX, 0x06, 0x52] );
+
+        expect(frame.slice(0,frame.frameSize)).to.be.deep.equal(expectedFrame.slice(0,expectedFrame.frameSize));
+    });
+    it("Test automatic BCC calculator and insert, for transparent data, with SOH header and then embedded DLE as data, and STX as data", function() {
+
+        let frame = new BscFrame();
+        frame.pushDataByte(BSC.SYN);
+        frame.pushDataByte(BSC.SOH);
+        frame.pushDataByte(0xF1);
+        frame.pushDataByte(0xF2);
+        frame.pushEscapedDataByte(BSC.STX);
+        frame.pushDataByte(0x41);
+        frame.pushDataByte(0x42);
+        frame.pushDataByte(BSC.STX);    // This is just data 0x02
+        frame.pushDataByte(BSC.DLE);    // This is just data 0x10
+        frame.pushDataByte(0x43);
+        frame.pushEscapedDataByte(BSC.ETX);
+
+        let expectedFrame = new BscFrame(300,
+            [ BSC.SYN, BSC.SOH, 0xF1, 0xF2,
+              BSC.DLE, BSC.STX, 0x41, 0x42,0x02, 0x10, 0x10, 0x43, BSC.DLE, BSC.ETX, 0x06, 0x52] );
+
+        expect(frame.slice(0,frame.frameSize)).to.be.deep.equal(expectedFrame.slice(0,expectedFrame.frameSize));
+    });
+    it("Test automatic BCC calculator and insert, for transparent data, with SOH header and then embedded DLE as data, and STX as data", function() {
+
+        let frame = new BscFrame();
+        frame.pushDataByte(BSC.SYN);
+        frame.pushDataByte(BSC.SOH);
+        frame.pushDataByte(0xF1);
+        frame.pushDataByte(0xF2);
+        frame.pushEscapedDataByte(BSC.STX);
+        frame.pushDataByte(0x41);
+        frame.pushDataByte(0x42);
+        frame.pushDataByte(BSC.STX);    // This is just data 0x02
+        frame.pushEscapedDataByte(BSC.DLE);    // This is just data 0x10
+        frame.pushDataByte(0x43);
+        frame.pushEscapedDataByte(BSC.ETX);
+
+        let expectedFrame = new BscFrame(300,
+            [ BSC.SYN, BSC.SOH, 0xF1, 0xF2,
+              BSC.DLE, BSC.STX, 0x41, 0x42,0x02, 0x10, 0x10, 0x43, BSC.DLE, BSC.ETX, 0x06, 0x52] );
+
+        expect(frame.slice(0,frame.frameSize)).to.be.deep.equal(expectedFrame.slice(0,expectedFrame.frameSize));
+    });
+    it("Test getFrameType() and hasHeader() functions", function() {
+
+        let frame = new BscFrame(null, [BSC.SYN, BSC.STX, 0x41, BSC.ETX, 0x11, 0x22]);
+        expect(frame.getFrameType()).to.be.equal(BscFrame.FRAME_TYPE_TEXT);
+        expect(frame.hasHeader()).to.be.false;
+
+        frame = new BscFrame(null, [BSC.SYN, BSC.SOH, 0xF1, 0xF2, BSC.STX, 0x41, BSC.ETX, 0x11, 0x22]);
+        expect(frame.getFrameType()).to.be.equal(BscFrame.FRAME_TYPE_TEXT);
+        expect(frame.hasHeader()).to.be.true;
+
+        frame = new BscFrame(null, [BSC.SYN, BSC.SOH, 0xF1, 0xF2, BSC.DLE, BSC.STX, 0x41, BSC.DLE, BSC.ETX, 0x11, 0x22]);
+        expect(frame.getFrameType()).to.be.equal(BscFrame.FRAME_TYPE_TRANSPARENT_TEXT);
+        expect(frame.hasHeader()).to.be.true;
+
+        frame = new BscFrame(null, [BSC.SYN, BSC.DLE, BSC.STX, 0x41, BSC.DLE, BSC.ETX, 0x11, 0x22]);
+        expect(frame.getFrameType()).to.be.equal(BscFrame.FRAME_TYPE_TRANSPARENT_TEXT);
+        expect(frame.hasHeader()).to.be.false;
+    });
+    it("Test forEachTextByte() functions with header and non-transparent text, ending with ETB", function() {
+
+        let frame = new BscFrame(null, [BSC.SYN,
+            BSC.SOH, 0xF1, 0xF2,
+            BSC.STX, 0x41, 0x42, BSC.ETB, 0x11, 0x22]);
+
+        let textData = [];
+        frame.forEachTextByte( (d) => textData.push(d) );
+
+        expect(textData).to.be.deep.equals([0x41, 0x42]);
+
+    });
+    it("Test forEachTextByte() functions with no header and transparent text, ending with ETX", function() {
+
+        let frame = new BscFrame(null, [BSC.SYN, BSC.DLE, BSC.STX,
+            0x41, BSC.DLE, BSC.DLE, 0x42, BSC.DLE, BSC.ETX, 0x11, 0x22]);
+
+        let textData = [];
+        frame.forEachTextByte( (d) => textData.push(d) );
+
+        expect(textData).to.be.deep.equals([0x41, 0x10, 0x42]);
+
+    });
+    it("Test forEachTextByte() functions with no header and non-transparent text, with ITB and ETX", function() {
+
+        let frame = new BscFrame(null, [BSC.SYN, BSC.STX,
+            0x41, 0x42, BSC.ITB, 0x33, 0x33, BSC.STX, 0x43, BSC.ETX, 0x44, 0x44]);
+
+        let textData = [];
+        frame.forEachTextByte( (d) => textData.push(d) );
+
+        expect(textData).to.be.deep.equals([0x41, 0x42, 0x43]);
+    });
 
 });
 
@@ -435,6 +591,7 @@ describe("Testing class BscFrameCreator", function() {
         expect(frame).to.be.deep.equal(new BscFrame( null,
             [BSC.SYN, BSC.EOT]));
     });
+
 
 
 });

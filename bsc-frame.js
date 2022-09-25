@@ -24,6 +24,9 @@ class BscFrame extends Uint8Array {
         if ( initialData )
             this.push(initialData);
 
+        this.crcValue = 0;
+        this.inTransparentText = false;
+        this.autoInsertBcc = true;
     }
 
     push(data) {
@@ -33,11 +36,84 @@ class BscFrame extends Uint8Array {
              || data instanceof Int8Array
               ) {
             for ( let x = 0; x<data.length; x++ )
-                this[this.frameSize++] = data[x];
+                this.pushByte(data[x]);
             return;
         }
 
-        this[this.frameSize++] = data;
+        this.pushByte(data);
+    }
+
+    pushByte(dataByte) {
+        this[this.frameSize++] = dataByte;
+    }
+
+    /**
+     * Add the dataByte to the buffer, prefixed with a DLE char. The DLE is not
+     * part of the CRC calculation. A DLE-STX sequence will reset the CRC value
+     * and set the transparent mode to true.
+     *
+     * A DLE followed by ETB, ITB, ENQ, ETX will end transparent mode. The
+     * character is added to the CRC calculation.
+     *
+     * @param {*} dataByte
+     */
+    pushEscapedDataByte(dataByte) {
+        this.pushByte(BSC.DLE); // This is not included in the CRC calculation
+        // Reset CRC calculation if required
+        if ( dataByte === BSC.STX ) {
+            this.crcValue = 0;
+            this.transparentMode = true;
+        }
+        else {
+            this.crcValue = crc16([dataByte], this.crcValue);
+            if ( dataByte === BSC.ETB ||
+                 dataByte === BSC.ITB ||
+                 dataByte === BSC.ENQ ||
+                 dataByte === BSC.ETX ) {
+                this.transparentMode = false;
+            }
+        }
+
+        this.pushByte(dataByte);
+        if ( this.autoInsertBcc &&
+             ( dataByte == BSC.ETB || dataByte == BSC.ITB || dataByte == BSC.ETX ) ) {
+            let bccValue = this.crcValue;
+            this.pushByte( 0x000000FF & bccValue );
+            bccValue = bccValue>>8;
+            this.pushByte( 0x000000FF & bccValue );
+        }
+    }
+
+    /**
+     * Add the dataByte to the buffer. If we are in transparent mode then
+     * the byte is added to the buffer and included in the CRC. Also, if the
+     * byte value is a DLE then it is prefixed with a DLE.
+     *
+     * If we are not in transparent mode then if the character is a SOH or STX
+     * then we reset the CRC. The byte is not included in the CRC calculation.
+     *
+     * @param {*} dataByte
+     */
+    pushDataByte(dataByte) {
+        // Reset CRC calculation if required
+        if ( !this.transparentMode &&
+             ( dataByte === BSC.SOH || dataByte === BSC.STX ) )
+                this.crcValue = 0;
+        else {
+            this.crcValue = crc16([dataByte], this.crcValue);
+        }
+        if ( this.transparentMode && dataByte === BSC.DLE ) {
+            this.pushByte(dataByte);    // Double the DLE
+        }
+        this.pushByte(dataByte);    // Add to frame buffer
+        if ( this.autoInsertBcc &&
+             !this.transparentMode &&
+                ( dataByte == BSC.ETB || dataByte == BSC.ITB || dataByte == BSC.ETX ) ) {
+            let bccValue = this.crcValue;
+            this.pushByte( 0x000000FF & bccValue );
+            bccValue = bccValue>>8;
+            this.pushByte( 0x000000FF & bccValue );
+        }
     }
 
     /**
@@ -110,6 +186,7 @@ class BscFrame extends Uint8Array {
             frameData.subarray(startOfFrame, endOfFrame+1) );
     }
 
+    // Define constants for different frame types we get as a response.
     static FRAME_TYPE_EOT       = 1;
     static FRAME_TYPE_ENQ       = 2;
     static FRAME_TYPE_ACK       = 3;
@@ -120,6 +197,10 @@ class BscFrame extends Uint8Array {
     static FRAME_TYPE_TEXT      = 9;
     static FRAME_TYPE_TRANSPARENT_TEXT = 10;
     static FRAME_TYPE_BAD       = -1;
+
+    // Now a constant for a timeout.
+    static RESPONSE_TIMEOUT     = -2;
+    static RESPONSE_OTHER_ERROR = -99;
 
     getFrameType() {
 
@@ -162,6 +243,58 @@ class BscFrame extends Uint8Array {
         }
         // Otherwise, bad frame.
         return BscFrame.FRAME_TYPE_BAD;
+    }
+
+    hasHeader() {
+        for (let x = 0; x < this.frameSize; x++) {
+            if (this[x] === BSC.SOH) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Execute the call back function for each byte in the text portion of the message.
+     * @param {*} callBackFn
+     */
+    forEachTextByte( callBackFn ) {
+        let inText = false;
+        let transparentText = false;
+        for ( let x = 0; x < this.frameSize; x++ ) {
+            if ( !inText ) {
+                if ( this[x] === BSC.STX ) {
+                    inText = true;
+                    if ( x >= 1 && this[x-1] === BSC.DLE ) {
+                        transparentText = true;
+                    }
+                    continue;
+                }
+            } else {
+                if ( !transparentText ) {
+                    if ( this[x] === BSC.ETX || this[x] === BSC.ETB || this[x] === BSC.ITB )
+                        inText = false;
+                } else if ( x < this.frameSize - 1 && this[x] === BSC.DLE &&
+                    ( this[x+1] === BSC.ETX || this[x+1] === BSC.ETB || this[x+1] === BSC.ITB ) ) {
+                        inText = false;
+                }
+            }
+            if ( inText ) {
+                if ( transparentText ) {
+                    if ( this[x] == BSC.DLE ) {
+                        switch( this[x+1] ) {
+                            case BSC.DLE:
+                                x++;
+                                break;
+                            case BSC.SYN:
+                                x += 2;
+                                continue;
+                        }
+                    }
+                }
+                callBackFn(this[x]);
+            }
+        }
     }
 
     /**
@@ -239,7 +372,23 @@ class BscFrame extends Uint8Array {
     }
 }
 
+class ResponseBscFrame extends BscFrame {
+
+    constructor(initialData = null, responseStatus = null)  {
+        super(null, initialData);
+        this.responseStatus = responseStatus;
+    }
+
+    getResponseStatus() {
+        if ( this.responseStatus )
+            return this.responseStatus;
+
+        return this.getFrameType();
+    }
+}
+
 module.exports.BscFrame = BscFrame;
+module.exports.ResponseBscFrame = ResponseBscFrame;
 
 class BscFrameCreator {
 

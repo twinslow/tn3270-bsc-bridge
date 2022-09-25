@@ -556,6 +556,10 @@ class TelnetConnection {
         });
     }
 
+    async sendRecord(data) {
+        await this.sendData(data);
+        await this.sendData([ CMD_IAC, CMD_EOR ]);
+    }
 
     sendData(message) {
         let xthis = this;

@@ -8,13 +8,17 @@ const { hexDump } = require("./hex-dump");
 const { parseIntDecOrHex } = require("./parse-int-dec-or-hex");
 const { sleep } = require("./sleep");
 
-const {
-    SerialComms,
-    SerialCommsError } = require("./serial-comms");
+const { SerialComms, SerialResponse, SerialCommsError } = require("./serial-comms");
 
-const { BscFrame } = require('./bsc-frame');
-const { BSC } = require('./bsc-protocol');
+const { BscFrame, BscFrameCreator, ResponseBscFrame } = require('./bsc-frame');
 
+const { BSC, EBCDIC} = require('./bsc-protocol');
+
+/**
+ * Encapsulate the connection to the telnet server. Forward data
+ * to the BscTerminal instance, which will be queued for sending
+ * to the terminal device.
+ */
 class TerminalToTn3270 {
 
     static telnetHost = config.get("telnet.host");
@@ -58,6 +62,10 @@ class TerminalToTn3270 {
         }
     }
 
+    async sendRecord(data) {
+        await this.telnetClient.sendRecord(data);
+    }
+
 }
 
 class BscErrorUnexpectedResponse extends Error {
@@ -72,9 +80,17 @@ class BscErrorLineError extends Error {
     }
 }
 
+/**
+ * An instance of this class is used to represent a terminal attached
+ * the BSC attached controller. The class provides glue between the
+ * TN3270 terminal connection and the BSC line on which we communicate
+ * with the controller.
+ */
 class BscTerminal {
-    constructor(pollAddress, terminalType, bisyncLine) {
-        this.pollAddress = pollAddress;
+    constructor(cuAddress, terminalAddress, terminalType, bisyncLine) {
+        this.cuAddress = cuAddress;             // Device address, not the character
+        this.terminalAddress = terminalAddress;     // Device address, not the character
+
         this.terminalType = terminalType;
         this.bisyncLine = bisyncLine;
 
@@ -110,18 +126,190 @@ class BscTerminal {
         await this.bisyncLine.sendPoll( this.pollAddress );
     }
 
+    async pollForInput() {
+        /*
+
+        (1) Reset the line (EOT) ... no response expected.
+
+        (2) Poll the device
+            loop while more data to receive
+                Get the response frame
+                If timeout then end processing
+                If EOT then no more data to receive -- break from loop
+                If status message (has SOH % R) -- then process
+                If test request message  (has SOH % /) then process
+                If read modified response (AID, CURSOR, optional data) then process
+                If short read modified response (AID) then process
+                Send ACK1 or ACK0
+            End loop
+
+
+        Processing status message -- for now ignore
+        Processing test message -- for now ignore
+        Processing read modified response -- add the data to the buffer to be forwarded to TN3270 server
+        Processing short read modified response -- add the data to the buffer to be forwarded to TN3270 server
+        */
+
+       // This is the data we will send back to the telnet server.
+       let responseData = [];
+
+        // (1) - Send EOT to reset line
+        let frame, responseFrame;
+        frame = BscFrameCreator.makeFrameEot();
+        await this.bisyncLine.sendFrame(frame);     // No response expected.
+
+        // (2) - Send the poll
+        frame = BscFrameCreator.makeFramePollAddress(this.cuAddress, this.terminalAddress);
+        responseFrame = await this.bisyncLine.sendFrameAndGetResponse(frame);     // Response expected.
+        let ackType = 1;
+        while( responseFrame.getResponseStatus() !== ResponseBscFrame.FRAME_TYPE_EOT ) {
+            switch( responseFrame.getResponseStatus() ) {
+                case ResponseBscFrame.RESPONSE_TIMEOUT:
+                    return;
+
+                case ResponseBscFrame.FRAME_TYPE_TEXT:
+                case ResponseBscFrame.FRAME_TYPE_TRANSPARENT_TEXT:
+                    if ( responseFrame.hasHeader() ) {
+                        // TODO: Not doing anything with these yet!
+                    } else {
+                        let dataSection = false;
+                        responseFrame.forEachTextByte( (dataByte) => responseData.push(dataByte) );
+                    }
+                    break;
+
+            }
+
+            frame = BscFrameCreator.makeFrameAck(ackType);
+            responseFrame = await this.bisyncLine.sendFrameAndGetResponse(frame);     // Response expected.
+            ackType = ackType ? 0 : 1;
+        }
+
+        await this.tn3270Handler.sendRecord(responseData);
+    }
+
+    async sendQueuedData() {
+        // If no queued data we can exit.
+        if ( this.queuedDataToBeSent.length == 0 )
+            return;
+
+        let data = this.queuedDataToBeSent.shift();
+
+        /*
+
+        (1)  Reset the line (EOT) ... no response expected.
+
+        (2)  Select the device
+             Get the response
+             If timeout then device not available ... end processing for device.
+             If RVI then device has pending status... end processing and next poll will get status.
+             If WACK then device busy ... end processing for this send.
+             If ACK0 then continue.
+
+        (3)  Send the data
+
+             Loop until end of data
+                Create a frame
+                Add SYN and DLE STX
+                Loop until frame has 252 bytes of data (or end of data)
+                    Add byte
+                Add DLE ETB (or DLE ETX if end of data)
+                Send loop until send cnt > 4
+                    Send the frame
+                    Get the response
+                    If ACK1 or ACK0 then do next frame
+                    If NAK or ENQ then resend frame
+                    If EOT then cease send data ... exit for next device or poll.
+                    If timeout then resend frame
+
+        (4)  Send an EOT to finish up the send.
+        */
+
+        // (1) - Send EOT to reset line
+        let frame, responseFrame;
+        frame = BscFrameCreator.makeFrameEot();
+        await this.bisyncLine.sendFrame(frame);     // No response expected.
+
+        // (2) - Send the select
+        frame = BscFrameCreator.makeFrameSelectAddress(this.cuAddress, this.terminalAddress);
+        responseFrame = await this.bisyncLine.sendFrameAndGetResponse(frame);     // Response expected.
+
+        switch( responseFrame.getResponseStatus() ) {
+            case ResponseBscFrame.RESPONSE_TIMEOUT:
+            case ResponseBscFrame.FRAME_TYPE_RVI:
+            case ResponseBscFrame.FRAME_TYPE_WACK:
+                return;
+
+            // Good response from select ... continue
+            case ResponseBscFrame.FRAME_TYPE_ACK:
+                break;
+
+            // Something else, then we're done.
+            default:
+                return;
+        }
+
+        // (3) - Send the data in multiple text blocks if necessary.
+        //       Send as transparent data to support extended highlighting and attrtibutes in the
+        //       3270 datastream.
+
+        while ( data.length > 0 ) {
+            frame = new BscFrame();
+            frame.pushEscapedDataByte( BSC.STX )
+            frame.pushDataByte( EBCDIC.ESC );
+            while ( frame.frameSize <= 252 && data.length > 0 ) {
+                frame.pushDataByte( data.shift() );
+            }
+            if ( data.length == 0 )
+                frame.pushEscapedDataByte(BSC.ETX); // This is the last block of data
+            else
+                frame.pushEscapedDataByte(BSC.ETB); // Not the last block
+            let sendCount = 0;
+            while ( sendCount < 4 ) {
+                responseFrame = await this.bisyncLine.sendFrameAndGetResponse(frame);     // Response expected.
+                switch( responseFrame.getResponseStatus() ) {
+                    case ResponseBscFrame.RESPONSE_TIMEOUT:
+                        return;
+
+                    case ResponseBscFrame.FRAME_TYPE_NAK:
+                    case ResponseBscFrame.FRAME_TYPE_ENQ:
+                        continue;   // Resend
+
+                    // Good response from select ... break out of the resend loop to send next frame
+                    case ResponseBscFrame.FRAME_TYPE_ACK:
+                        break;
+
+                    // Something else, then we're done.
+                    default:
+                        return;
+                }
+            }
+        }
+
+        // (4) Send EOT to finish everything off.
+        frame = BscFrameCreator.makeFrameEot();
+        await this.bisyncLine.sendFrame(frame);     // No response expected.
+    }
 
 }
 
+/**
+ * This class instance represents a BSC line on which a single 3274/3174
+ * cluster controller is attached, which in turn has a number of terminal
+ * devices attached.
+ *
+ * The physical synchronous communications line is accessed via a serial port
+ * which converts the USB (or asynch serial) to synchronous serial, with
+ * required clock signals.
+ */
 class BisyncLine {
 
     static telnetTerminalType = config.get("telnet.terminal-type");
     static FRAME_XMIT_RETRY_LIMIT = 3;
     static RESPONSE_TIMEOUT = 20000;
 
-    static CMD_WRITE    = 0x01;
-    static CMD_READ     = 0x02;
-    static CMD_POLL     = 0x09;
+    // These are the two basic commands sent to the usb-bsc-dongle.
+    static CMD_WRITREAD    = 0x01;      // Write followed by a read to get response
+    static CMD_WRITE       = 0x02;      // Write with no read (no response/ack expected)
 
     constructor() {
         this.bscTerminals = [];
@@ -130,7 +318,6 @@ class BisyncLine {
 
     addDevice(pollAddress, terminalType) {
         this.bscTerminals.push( new BscTerminal( pollAddress, terminalType, this) );
-        //this.devices.push( new TerminalToTn3270(pollAddress, terminalType, this ) );
     }
 
     addDevices(terminalList) {
@@ -154,11 +341,10 @@ class BisyncLine {
         }
     }
 
-
     async runLoop() {
         // do until shutdown ...
         while ( this.runFlag ) {
-            // For each device, poll for input
+            // For each device, poll for input .. or replace this loop with a general poll.
             for (let x = 0; x < this.bscTerminals.length && this.runFlag; x++) {
                 await this.bscTerminals[x].pollForInput();
             }
@@ -175,7 +361,7 @@ class BisyncLine {
         this.serialComms.start();
     }
 
-
+    /*
     async testRun() {
         let frame;
         while(1) {
@@ -252,7 +438,7 @@ class BisyncLine {
         }
 
     }
-
+    */
     async run() {
         this.controllerAddress = config.get("line.controller-address");
         this.serialDevice = config.get("line.serial-device");
@@ -260,24 +446,23 @@ class BisyncLine {
 
         await this.setupSerialPort();
 
-//        this.addDevices(terminalList);
-//        await sleep(3000);
+        this.addDevices(terminalList);
+        await sleep(3000);
 
-//        await this.connectDevices();
+        await this.connectDevices();
 
         await sleep(1000);
         await this.sendCommand(SerialComms.CMD_RESET);
 
+        // await sleep(10000);
+        // await this.testRun();
+
+         this.runFlag = true;
+         await this.runLoop();
+
         await sleep(10000);
-        await this.testRun();
 
-
-        // this.runFlag = true;
-        // await this.runLoop();
-
-        await sleep(10000);
-
-//        await this.closeDevices();
+        await this.closeDevices();
     }
 
     async stop() {
@@ -288,12 +473,31 @@ class BisyncLine {
         this.serialComms.sendCommand(command, dataSize);
     }
 
-    async sendFrame(command, frame) {
+    async sendFrame(frame) {
         this.frameCount++;
-        await this.sendCommand(command, frame.frameSize);
-
+        await this.sendCommand(SerialComms.CMD_WRITE, frame.frameSize);
         hexDump(logMgr.debug, 'BSC frame out', 0x20, frame, frame.frameSize, true);
         this.serialComms.sendSerial(frame);
+    }
+
+    translateSerialResponseCode(code) {
+        switch(code) {
+            case SerialComms.CMD_RESPONSE_OK:
+                return null;
+
+            case SerialComms.CMD_RESPONSE_TIMEOUT:
+                return ResponseBscFrame.RESPONSE_TIMEOUT;
+
+            default:
+                return ResponseBscFrame.RESPONSE_OTHER_ERROR;
+        }
+    }
+
+    async sendFrameAndGetResponse(frame) {
+        let serialResponse = await this.serialComms.sendFrameAndGetResponse(frame);
+        let responseBscFrame = new ResponseBscFrame(serialResponse.data,
+            this.translateSerialResponseCode(serialResponse.responseCode));
+        return responseBscFrame;
     }
 
     async getResponse() {

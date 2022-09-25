@@ -29,7 +29,7 @@ class BSC {
     static TRAILING_PAD = 0xff;
 
     // EBCDIC control
-    ESC = 0x27;
+    static ESC = 0x27;
 
     // A 256 entry array. If entry is "1" it is a BSC control character.
     static BSC_CONTROL_CHECK = new Uint8Array([
@@ -88,6 +88,9 @@ class BSC {
 
 }
 
+class EBCDIC {
+    static ESC = 0x27;
+}
 
 module.exports.BSC = BSC;
-
+module.exports.EBCDIC = EBCDIC;
