@@ -453,6 +453,15 @@ class BscFrameCreator {
         return frame;
     }
 
+    static makeFrameAck(ackType) {
+        if ( ackType == 0 ) {
+            let frame = new BscFrame(null, [BSC.SYN, BSC.DLE, BSC.ACK0]);
+            return frame;
+        }
+        let frame = new BscFrame(null, [BSC.SYN, BSC.DLE, BSC.ACK1]);
+        return frame;
+    }
+
     /**
      * Create a poll or select frame using the provided CU and
      * terminal dev address characters.

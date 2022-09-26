@@ -52,7 +52,7 @@ describe("Testing class SerialComms", function () {
         ]);
         expect(obj.partialData).to.be.deep.equal( Buffer.from([
             0x02
-        ]));    
+        ]));
 
         stub_processInboundCommand.resetHistory();
 
@@ -68,7 +68,7 @@ describe("Testing class SerialComms", function () {
         ]);
         expect(obj.partialData).to.be.deep.equal(Buffer.from([
             0x02, 0x02
-        ]));    
+        ]));
 
         stub_processInboundCommand.resetHistory();
 
@@ -84,7 +84,7 @@ describe("Testing class SerialComms", function () {
         ]);
         expect(obj.partialData).to.be.deep.equal(Buffer.from([
             0x02, 0x00, 0x02
-        ]));    
+        ]));
 
         stub_processInboundCommand.resetHistory();
 
@@ -100,7 +100,7 @@ describe("Testing class SerialComms", function () {
         ]);
         expect(obj.partialData).to.be.deep.equal(Buffer.from([
             0x02, 0x00, 0x02, 0x31
-        ]));    
+        ]));
 
         stub_processInboundCommand.resetHistory();
 

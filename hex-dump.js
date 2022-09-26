@@ -1,7 +1,7 @@
 "use strict";
 
 function hexDump(fn, linePrefix, bytesPerLine, data, length, isEbcdic) {
-    fn(`${linePrefix}          00------4-------8-------C-------10------4-------8-------C-------`);
+    // fn(`${linePrefix}          00------4-------8-------C-------10------4-------8-------C-------`);
     for (let x = 0; x < length; x += bytesPerLine) {
         let hexPart = '';
         for (let lx = x; lx < Math.min(x + bytesPerLine, length); lx++) {

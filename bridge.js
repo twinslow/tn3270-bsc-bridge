@@ -94,12 +94,16 @@ class BscTerminal {
 
         this.queuedDataToBeSent = [];
 
-        xthis = this;
+        let xthis = this;
         this.tn3270Handler = new TerminalToTn3270(
-            pollAddress,
+            terminalAddress,
             terminalType,
             (data) => { xthis.addQueuedData(data); }
         );
+    }
+
+    async start() {
+        await this.tn3270Handler.start();
     }
 
     /**
@@ -314,13 +318,14 @@ class BisyncLine {
         this.frameCount = 0;
     }
 
-    addDevice(pollAddress, terminalType) {
-        this.bscTerminals.push( new BscTerminal( pollAddress, terminalType, this) );
+    addDevice(pollAddress, terminalAddress, terminalType) {
+        this.bscTerminals.push( new BscTerminal( pollAddress, terminalAddress, terminalType, this) );
     }
 
     addDevices(terminalList) {
         terminalList.forEach( terminal => {
             this.addDevice(
+                this.controllerAddress,
                 terminal.address,
                 terminal.type || BisyncLine.telnetTerminalType
             );
@@ -450,7 +455,8 @@ class BisyncLine {
         await this.connectDevices();
 
         await sleep(1000);
-        await this.sendCommand(SerialComms.CMD_RESET);
+        this.serialComms.sendCommand(SerialComms.CMD_RESET);
+        await sleep(10000);
 
         // await sleep(10000);
         // await this.testRun();
@@ -466,7 +472,7 @@ class BisyncLine {
     async stop() {
         this.runFlag = false;
     }
-/*
+
     async sendCommand(command, dataSize = 0) {
         this.serialComms.sendCommand(command, dataSize);
     }
@@ -477,7 +483,7 @@ class BisyncLine {
         hexDump(logMgr.debug, 'BSC frame out', 0x20, frame, frame.frameSize, true);
         this.serialComms.sendSerial(frame);
     }
-*/
+
     translateSerialResponseCode(code) {
         switch(code) {
             case SerialComms.CMD_RESPONSE_OK:
